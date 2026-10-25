@@ -15,7 +15,7 @@ Needs python 3.10+ and ffmpeg. Install everything into a virtual environment in 
 
 ```
 python3 -m venv .object-separation
-.object-separation/bin/pip install torch transformers opencv-python-headless pillow numpy
+.object-separation/bin/pip install torch torchvision transformers opencv-python-headless pillow numpy
 ```
 
 On Windows use `.object-separation\Scripts\pip`. With an NVIDIA card on Windows, install the CUDA build of torch from pytorch.org first, because plain pip gives the slower CPU build. Run all the Python below with the venv's python.

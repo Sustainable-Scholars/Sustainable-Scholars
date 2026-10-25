@@ -1,6 +1,6 @@
 ---
 name: video-editing-skill
-description: Edit videos with plain-language instructions using ffmpeg and Whisper: trim clips, remove silence (jump cuts), burn captions in several styles, add text overlays, change speed, and chain these in one pipeline. Use when the user gives a video file path and asks to cut, caption, speed up or add text to it.
+description: "Edit videos with plain-language instructions using ffmpeg and Whisper: trim clips, remove silence (jump cuts), burn captions in several styles, add text overlays, change speed, and chain these in one pipeline. Use when the user gives a video file path and asks to cut, caption, speed up or add text to it."
 ---
 
 # Video Editing

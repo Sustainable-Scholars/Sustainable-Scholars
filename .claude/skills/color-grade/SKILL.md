@@ -1,7 +1,7 @@
 ---
 name: color-grade
 description: Generate .cube 3D LUTs for color correction in DaVinci Resolve and Adobe Premiere Pro. Analyzes a frame or clip, fits the correction by measurement, and emits a ready-to-use LUT. Detects log vs display-referred footage, matches one shot to another, and previews grades live in-browser. Use when the user needs color grading, LUT generation, fixing a colour cast or exposure, matching shots, or frame analysis.
-argument-hint: [lut-type] [output-path]
+argument-hint: "[lut-type] [output-path]"
 allowed-tools: Read, Bash(ruby *), Bash(python3 *), Bash(ffmpeg *), Bash(ffprobe *), Write, Glob, Grep
 ---
 

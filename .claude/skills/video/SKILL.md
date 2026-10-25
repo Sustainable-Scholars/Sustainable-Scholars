@@ -1,6 +1,6 @@
 ---
 name: video
-description: Video pipeline: watch, understand, cut, grade, caption, quality check a render. Use for any footage question including "what is in this clip". You MUST extract and look at frames. Editing from a transcript alone is a failure.
+description: "Video pipeline: watch, understand, cut, grade, caption, quality check a render. Use for any footage question including \"what is in this clip\". You MUST extract and look at frames. Editing from a transcript alone is a failure."
 ---
 
 # video
