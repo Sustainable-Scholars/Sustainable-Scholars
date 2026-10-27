@@ -10,7 +10,7 @@ Three videos made with the `explainer-default`, `explainer-engaging` and `explai
 
 Each HTML file is self-contained (fonts embedded). Open it in a browser to scrub and play it with sound.
 
-## Re-render
+## Re-render (see PROMPTS.md for what to type to Claude)
 
 ```
 npm i playwright            # plus: npx playwright install chromium
