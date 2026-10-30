@@ -1,0 +1,1 @@
+v3: full-screen face opens with words (Work Smarter / Not Harder / debt erased), shrinks to window for a by-hand vs dishwasher split screen, then the evolving diagram. End card reads sustainable-scholars.org.
