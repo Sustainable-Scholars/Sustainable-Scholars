@@ -46,3 +46,9 @@ Not skills. Full project folders that are used by opening Claude Code inside the
 - Test results for every skill, fixes made and known issues: [research/skill-test-report.md](research/skill-test-report.md).
 - Upload zips for claude.ai / Cowork: `python3 tools/package_skills.py OUT_DIR [skill ...]` (strips frontmatter keys that claude.ai rejects; vault copies are untouched).
 - Video skills research and install plan: [research/video-skills.md](research/video-skills.md).
+
+## Plugins (installed per machine, not copied into the vault)
+
+| Plugin | What it does | Install | Notes | Source |
+|--------|--------------|---------|-------|--------|
+| claude-mem | Persistent memory for Claude Code: hooks record each session's tool use, a local worker (SQLite + vector search) summarizes it, and later sessions get relevant context back. Includes a `mem-search` skill and a local web viewer. | In Claude Code on your own computer: `/plugin marketplace add thedotmack/claude-mem` then `/plugin install claude-mem`, then restart. Or `npx claude-mem install`. | Not a skill, so it is not vendored here. Its default setup asks you to sign in to its hosted service (cmem.ai) and uses a hosted observer; "Cloud Sync" can back memories up to cmem.ai. To keep it local, choose a local provider (`--provider` flag) or set `CLAUDE_MEM_ONLINE_OPTIN=false` (per its README; not tested here). Data lives in `~/.claude-mem/`. Wrap anything sensitive in `<private>` tags. Needs Node 20+ and Bun. Cloud sessions are wiped, so memory only persists on a machine you own. | [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) v15.7.0, Apache-2.0 |
