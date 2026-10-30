@@ -55,3 +55,4 @@ Not skills. Full project folders that are used by opening Claude Code inside the
 
 - Example: `examples/story-short-snap-flashback/` - raw talking head to vertical story short with snap-triggered flashback transitions and animated B-roll.
 - Notes: `research/reel-styles.md` - reference reel styles the user likes.
+- Example: `examples/dishwasher-reel/` - effects-reel style edit with figurative dish animations and site mockups.
