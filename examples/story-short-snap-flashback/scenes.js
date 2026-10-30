@@ -6,7 +6,7 @@ const GL = (a = 1) => `rgba(199,164,77,${a})`;
 
 // 1. hook chips (overlay) -------------------------------------------------------
 { const [a0] = wd('scholarships', 0); const chips = [['SCHOLARSHIP', 70, 560, -6], ['ESSAY', 740, 520, 5], ['DEADLINE', 610, 770, -4], ['APPLY', 90, 800, 6]];
-  scene(1.4, 3.4, { full: false }, root => { const els = chips.map(c => box(root, `left:${c[1]}px;top:${c[2]}px;padding:18px 34px;border-radius:50px;background:rgba(19,32,62,.88);border:4px solid ${GOLD};font:900 44px ${F.slam};color:#fff;letter-spacing:2px;white-space:nowrap`, c[0])); return t => els.forEach((e, i) => { const k = clamp(pop(t, a0 - 0.2 + i * 0.16)); e.style.transform = `translateY(${px(Math.sin(t * 2.2 + i) * 10 + (1 - k) * 60)}) rotate(${chips[i][3] + Math.sin(t * 1.6 + i) * 2}deg) scale(${k.toFixed(3)})`; e.style.opacity = k.toFixed(2); }); }); }
+  scene(0.05, 3.4, { full: false, fi: 0.08 }, root => { const els = chips.map(c => box(root, `left:${c[1]}px;top:${c[2]}px;padding:18px 34px;border-radius:50px;background:rgba(19,32,62,.88);border:4px solid ${GOLD};font:900 44px ${F.slam};color:#fff;letter-spacing:2px;white-space:nowrap`, c[0])); return t => els.forEach((e, i) => { const k = clamp(pop(t, 0.2 + i * 0.2)); e.style.transform = `translateY(${px(Math.sin(t * 2.2 + i) * 10 + (1 - k) * 60)}) rotate(${chips[i][3] + Math.sin(t * 1.6 + i) * 2}deg) scale(${k.toFixed(3)})`; e.style.opacity = k.toFixed(2); }); }); }
 
 // 2. confusion (overlay) --------------------------------------------------------
 { const qs = [[110, 300, 230, -12], [790, 250, 270, 10], [60, 600, 170, 8], [860, 560, 210, -9]]; const t0 = wd('no', 0)[0];
