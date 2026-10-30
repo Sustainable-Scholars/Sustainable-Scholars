@@ -67,7 +67,7 @@ const KEY = new Set(['shift', 'nothing', 'randomly', 'completely', 'different', 
 const CHUNKS = (() => { const out = []; let cur = []; WORDS.forEach((w, i) => { const nxt = WORDS[i + 1]; cur.push(w); const chars = cur.map(x => x.t).join(' ').length; if (cur.length >= 3 || chars > 13 || (nxt && chars + nxt.t.length > 16) || (nxt && nxt.a - w.b > 0.25)) { out.push(cur); cur = []; } }); if (cur.length) out.push(cur); return out; })();
 const capLayer = box(stage, `left:0;top:1230px;width:${W}px;height:300px;z-index:40`);
 const capEls = CHUNKS.map(ch => { const d = box(capLayer, `left:0;top:0;width:${W}px;text-align:center;font:900 84px/1.05 ${F.slam};text-transform:uppercase;letter-spacing:-1px;white-space:nowrap;display:none;transform-origin:50% 60%`); const sp = ch.map(w => { const s = el('span', 'display:inline-block;margin:0 20px;color:#fff;-webkit-text-stroke:10px #000;paint-order:stroke fill;text-shadow:0 6px 0 rgba(0,0,0,.55)', d, w.t.replace(/^i$/, 'I')); return s; }); return { d, sp, ch, a: ch[0].a - 0.06, b: ch[ch.length - 1].b + 0.14 }; });
-function updCaps(t, boost) {
+function updCaps(t, boost) { capLayer.style.display='none'; return;
   capEls.forEach(c => { const on = t >= c.a && t < c.b; c.d.style.display = on ? 'block' : 'none'; if (!on) return; const k = spring(t - c.a, 22, 0.6); c.d.style.transform = `scale(${(0.82 + 0.18 * k).toFixed(3)}) translateY(${px((1 - k) * 24)})`; c.d.style.opacity = clamp((t - c.a) / 0.06).toFixed(2);
     c.sp.forEach((s, i) => { const w = c.ch[i], act = t >= w.a && t < w.b + 0.04, key = KEY.has(w.t); s.style.color = act ? GOLD : (key ? '#FFE9A8' : '#fff'); s.style.transform = act ? 'scale(1.14) translateY(-4px)' : 'none'; }); });
 }
@@ -99,7 +99,7 @@ async function seekAll(t) {
   let bub = 0;
   SCENES.forEach(s => { const o = vis(t, s.a, s.b, s.opt.fi ?? 0.25, s.opt.fo ?? 0.2); const on = o > 0.001; s.root.style.display = on ? 'block' : 'none'; if (!on) return; s.root.style.opacity = o.toFixed(3); s.root.style.transform = `scale(${(0.96 + 0.04 * easeOut(seg(t, s.a, s.a + 0.35))).toFixed(4)})`; s.root.style.filter = s.opt.cold ? `saturate(.75) hue-rotate(-8deg) brightness(${(0.9).toFixed(2)})` : 'none'; if (s.opt.full) bub = Math.max(bub, o); s.upd(t, t - s.a); });
   broll.style.filter = f > 0.01 ? `sepia(${(0.62 * f).toFixed(3)}) contrast(${(1 + 0.1 * f).toFixed(3)})` : 'none';
-  bubble.style.opacity = bub.toFixed(3); bubble.style.transform = `scale(${(0.85 + 0.15 * bub).toFixed(3)})`;
+  bubble.style.display='none'; bubble.style.opacity = '0'; bubble.style.transform = `scale(${(0.85 + 0.15 * bub).toFixed(3)})`;
   bubble.style.filter = f > 0.01 ? `sepia(${(0.78 * f).toFixed(3)})` : 'none';
   // flashback furniture
   fb.style.opacity = f.toFixed(3); barT.style.height = px(100 * f); barB.style.height = px(100 * f);
