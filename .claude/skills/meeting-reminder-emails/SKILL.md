@@ -1,109 +1,63 @@
 ---
 name: meeting-reminder-emails
-description: Blueprint for an Activepieces workflow that emails clients reminders before calendar invites so fewer meetings are missed. Covers the reminder schedule, the data tables, the flow steps, and the built-in limits (no duplicates, quiet hours, a cap per event, an on/off switch, failure alerts, a daily accountability report). Use when building, extending or debugging meeting reminders, or when asked to cut no-shows.
+description: Sustainable Scholars meeting reminder system, built on Supabase (not Activepieces). Emails clients 24 hours, 1 hour and 5 minutes before a call booked on sustainable-scholars.org. Covers the design, the tables, the two edge functions, the safety rules, how to go live, and how to test and troubleshoot. Use when changing, turning on, testing or debugging meeting reminders, or when asked to cut no-shows.
 ---
 
-# Meeting reminder emails (Activepieces blueprint)
+# Meeting reminder emails (Supabase)
 
-Status: design only, not built yet. Written 2026-11-01 for Sustainable Scholars. It reuses the
-pattern of the Instagram automation: one scheduled flow, data in tables, new meetings need no new flow.
+Built 2026-11-04 in the Supabase project "Scholarship Database" (`jbqzuzuloxxnzjrbehgr`).
+State at build: tables, functions and rules deployed and tested in **dry-run mode**. Not live.
+Code lives in this repo: `supabase/migrations/20261104_meeting_reminders_schema.sql`,
+`supabase/functions/mr-sync/index.ts`, `supabase/functions/mr-send/index.ts`.
 
-## Goal and success measure
-Fewer missed meetings caused by not knowing about them. Track one number: **no-show rate**
-= meetings where the client did not join / meetings held, per week. Compare 4 weeks before and after launch.
+## Where bookings come from
+The site's "Book a Call" button goes to `/book-call`, a custom page in the Base44 app
+(app id `69d8c767f023bd93d843becd`). Each booking is a Base44 `Booking` record: `user_email`,
+`user_name`, `start_time`, `end_time`, `status` (confirmed/cancelled/completed), `google_meet_link`,
+`title`. Calls are 15-minute Google Meet sessions, booked about 3 to 6 days ahead, a few per week.
 
-## Decisions to confirm before building (defaults in bold)
-| Question | Default |
-|---|---|
-| Which calendar holds the client meetings? | **Outlook (Microsoft 365)**, since the daily Instagram digest already sends through it. Google Calendar works the same way with its piece. |
-| Which meetings get reminders? | **Only events with the category/label `Client` or the text `[remind]` in the title**, so internal events never email anyone. |
-| Who sends? | **info@sustainable-scholars.org** through the existing Outlook connection. |
-| Time zone shown to clients | **The event's own time zone, printed with its abbreviation (e.g. 3:00 PM ET)**. |
+## How it works
+1. **`mr-sync`** (every 5 minutes) reads upcoming `Booking` records from Base44 and writes `mr_meetings`
+   plus three `mr_reminders` rows (24h, 1h, 5m). A reschedule recalculates unsent due times. A cancel
+   cancels unsent reminders. Any Base44 error returns HTTP 502 and is logged, so a failure is never silent.
+2. **`mr-send`** (every minute) calls `mr_claim_due()`, which expires, cancels and locks rows, then emails
+   each claimed reminder and marks it sent. A failure retries up to 3 times, then marks it failed and emails the owner.
+3. **Handshake:** the cron jobs send an `x-cron-secret` header. The value is `mr_settings.cron_secret`
+   (random, stored in the database). The functions compare it to that same row. No secret goes through chat.
 
-## Reminder schedule (per meeting)
-| # | When | Purpose | Skipped if |
-|---|---|---|---|
-| 1 | **On booking** (within 15 minutes of creation) | Confirm date, time, link, how to reschedule | Meeting starts in under 24 hours |
-| 2 | **48 hours before** | Awareness | Meeting starts in under 48 hours |
-| 3 | **24 hours before** | Awareness plus "reply YES to confirm" | Client already confirmed |
-| 4 | **2 hours before** | Last nudge with the join link | Meeting starts in under 2 hours |
+## Tables (all service-role only)
+`mr_settings` (one row: enabled, mode, owner_email, from_email, from_name, display_tz, cron_secret),
+`mr_meetings`, `mr_reminders` (unique per meeting and kind), `mr_opt_outs`, `mr_run_log`.
 
-Rule: a client never gets more than **4 reminder emails per meeting** and never more than
-**2 emails in any 24 hours**. If two reminders land in the same window, send only the later one.
+## Safety rules (all tested)
+- One reminder of each kind per meeting, enforced by a unique constraint.
+- A reminder past its window is dropped, never sent late: 24h gets 15 minutes, 1h gets 10, 5m gets 2.
+- A meeting booked too close to start skips the reminders that no longer fit.
+- Cancelled, completed and past meetings get nothing.
+- Opted-out emails get nothing. Add the address to `mr_opt_outs` when someone replies STOP.
+- The 24h reminder is kept between 7 AM and 8 PM Eastern; 1h and 5m follow the meeting time.
+- `enabled` is the kill switch. `mode`: `dry` (log only), `test` (email only the owner), `live`.
+- Row locking (`for update skip locked`) and an idempotency key on the email prevent double sends.
 
-## Boundaries that give accountability and consistency
-1. **Ledger, not memory.** Every email attempt is one row in `Reminder Log`. A reminder is sent only if no row exists for that event + reminder number. This makes the flow safe to run every 15 minutes and safe to re-run.
-2. **Quiet hours.** Nothing sends between 8 PM and 7 AM in the client's time zone. A reminder due in that window goes out at 7 AM, unless the meeting starts before then, in which case it is dropped and logged as `Skipped: quiet hours`.
-3. **Hard caps.** 4 per meeting, 2 per client per 24 hours, 40 emails per run, 200 per day. Hitting a cap stops sending and raises an alert; it never silently drops.
-4. **Only real, current meetings.** Skip events that are cancelled, declined by the client, in the past, or have no client email. Re-read the event right before sending, so a rescheduled meeting uses the new time.
-5. **Reschedule handling.** If the start time changed since the last reminder, reset that meeting's reminder numbers 2 to 4 and log `Rescheduled`.
-6. **Opt-out.** A client with `Opted Out` set gets no reminders. Every email has a plain-text line: "Reply STOP to skip reminders." A person sets the flag when someone replies.
-7. **Kill switch.** One row in `Settings` (`Reminders Enabled` = Yes/No). The flow reads it first and exits when it is No. Pause everything in one edit.
-8. **One owner.** `Settings` holds `Owner Email`. Failures and cap alerts go there, not to a shared inbox nobody reads.
-9. **Fail loudly.** Mirror the Instagram fix: if the calendar read fails, throw, so the run shows as Failed. A Succeeded run must mean the check really happened.
-10. **Dry-run mode.** `Mode` = Test sends every email to `Owner Email` only, with the client's name in the subject. Live mode is a deliberate switch.
+## Going live: still to do
+| Item | Who | Notes |
+|---|---|---|
+| `BASE44_API_KEY` secret | Owner, in Supabase > Edge Functions > Secrets | Create an API key in the Base44 app. Unverified: the exact Base44 REST path and header (`api_key`) in `mr-sync` must be confirmed on the first real sync. |
+| Email provider | Owner | Code uses Resend (`RESEND_API_KEY` secret). Needs `sustainable-scholars.org` (or a subdomain) verified with DNS records. Alternative: Microsoft Graph from info@ (needs an Entra app and admin consent) means rewriting `sendMail`. |
+| Schedule cron | Claude | `pg_cron` + `pg_net`: `mr-sync` every 5 minutes, `mr-send` every minute, header `x-cron-secret` from `mr_settings`. |
+| Test mode week | Both | `mode = 'test'`: every reminder goes to the owner only. Then `mode = 'live'`. |
+| Time zone | Owner | Bookings carry no time zone, so emails show Eastern (`display_tz`). Confirm this fits clients. |
 
-## Data (Activepieces Tables)
-**Settings** (one row): Reminders Enabled, Mode (Test/Live), Owner Email, Quiet Start (20), Quiet End (7), Max Per Meeting (4), Max Per Client Per 24h (2), Max Per Run (40), Max Per Day (200).
+## Open items (as of build)
+- The dry-run test rows (`source_id` starting `TEST-`) still need deleting, and `mr_settings` was left at
+  `enabled = true, mode = 'dry'`. Set `enabled = false` until cron is scheduled. The cleanup SQL was
+  blocked by a connector confirmation prompt.
+- No daily accountability report yet. Planned: an 8 AM email listing meetings with fewer than 3 reminders, failures, and replies waiting.
+- A "cron stopped running" alert is not built.
 
-**Clients**: Email, Name, Time Zone (default America/New_York), Opted Out (Yes/blank), Notes.
-
-**Reminder Log** (the audit trail): Event ID, Reminder No, Client Email, Meeting Start (UTC), Sent At, Result (Sent / Failed / Skipped), Reason, Confirmed (Yes/blank).
-
-**Daily Report** is not a table; it is an email (below).
-
-## Flow 1: "Meeting reminders (master)", every 15 minutes
-1. **Settings** (Tables, find records). Exit if `Reminders Enabled` is not Yes.
-2. **Get events** (Outlook calendar, list events from now to now + 50 hours, filter to `Client`).
-3. **Get log** (Tables, find records for those event IDs) and **Get clients** (opt-outs, time zones).
-4. **CODE "Find due reminders"** (inputs: settings, events, log, clients). For each event, work out which reminder numbers are due now, then apply the limits above in this order: eligibility, opt-out, already sent, reschedule reset, quiet hours, per-meeting cap, per-client cap, per-run and per-day caps. Return `{ due: [...], skipped: [...], errors: [] }`. Throw if the calendar read failed.
-5. **Loop over `due`**: send the email (Outlook, continue-on-failure). On success write a `Sent` row. On failure write a `Failed` row with the error.
-6. **Loop over `skipped`**: write one `Skipped` row with the reason (once per event + reminder, so the log stays small).
-
-Pseudo-code for step 4:
-```js
-export const code = async (inputs) => {
-  const OFFSETS = { 1: null, 2: 48, 3: 24, 4: 2 };       // hours before start; 1 = on booking
-  const now = Date.now();
-  const due = [], skipped = [];
-  for (const ev of inputs.events) {
-    if (ev.isCancelled || !ev.clientEmail || Date.parse(ev.start) <= now) continue;
-    // 1. opt-out  2. already in log  3. start changed -> reset  4. quiet hours in client tz
-    // 5. caps (per meeting, per client per 24h, per run, per day)
-    // push to due[] with { eventId, reminderNo, to, subject, html }, else skipped[] with a reason
-  }
-  return { due, skipped };
-};
-```
-
-## Flow 2: "Reminder accountability report", every day 8 AM Eastern
-Reads the last 24 hours of `Reminder Log` and the calendar, and emails `Owner Email`:
-- Meetings held yesterday vs. reminders sent for them (any meeting with 0 reminders sent is listed by name).
-- Failures and skips with reasons.
-- Any cap that was hit.
-- Replies awaiting a person (confirmations, STOP requests, reschedule asks).
-Send it even when everything is fine ("0 problems"). A missing report means the flow itself is broken.
-
-## Email templates (plain, one action each)
-Subject: `Reminder: {{meeting title}} on {{day}}, {{time with zone}}`
-Body: greeting by first name; date and time with zone; join link or address; one line on what to bring;
-a reschedule link or reply instruction; opt-out line. Reminder 3 adds "Reply YES to confirm."
-Reminder 4 is two lines: the time and the join link. Run the text through the `humanizer` skill before going live.
-
-## Build order
-1. Create the three tables and the `Settings` row in **Test** mode.
-2. Build Flow 1 with the CODE step; test with a fake `Client` event on a calendar 3 hours out.
-3. Check each rule on purpose: cancel the event, reschedule it, mark the client opted out, set quiet hours across the send time, hit the per-run cap with ten fake events.
-4. Build Flow 2 and confirm the report arrives with zero real clients.
-5. Switch `Mode` to Live for one week with a small group; compare no-shows.
-6. Review the daily reports for a week, then roll out to all client meetings.
-
-## Limits and costs
-- Activepieces free plan: an idle run is about 5 steps; at 15-minute intervals that is roughly 14,000 steps a month. If that is tight, run every 30 minutes.
-- Outlook sending limits apply (about 30 messages per minute); the per-run cap keeps this safe.
-- Replies (YES, STOP) are handled by a person at first. Auto-handling them is a later step.
-
-## Notes
-- Send from a real, monitored address so clients can reply.
-- Keep the schedule short. Four emails is the ceiling; more trains clients to ignore them.
-- Never email anyone who is not on a calendar event the team created.
+## Testing and troubleshooting
+- Test without Base44: insert a row in `mr_meetings` and `mr_reminders`, set `enabled = true, mode = 'dry'`,
+  call `mr-send` with `net.http_post` and the `x-cron-secret` header, then read `mr_reminders` and `mr_run_log`.
+  Run on 2026-11-04: due reminder sent (dry), cancelled and opted-out rows left unsent, 20-minute-late row dropped.
+- `mr_run_log` holds every sync and send result. `status = 'failed'` rows carry the error text.
+- A client who got only some reminders usually booked late; check `error = 'booked too late for this reminder'`.
