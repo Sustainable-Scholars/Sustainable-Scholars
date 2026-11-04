@@ -42,7 +42,7 @@ The site's "Book a Call" button goes to `/book-call`, a custom page in the Base4
 ## Going live: still to do
 | Item | Who | Notes |
 |---|---|---|
-| `BASE44_API_KEY` secret | Owner, in Supabase > Edge Functions > Secrets | Create an API key in the Base44 app. Unverified: the exact Base44 REST path and header (`api_key`) in `mr-sync` must be confirmed on the first real sync. |
+| `BASE44_API_KEY` secret | Owner, in Supabase > Edge Functions > Secrets | Holds a Base44 **personal access token** (workspace name > Settings > Secrets > Personal access tokens; one app, read-only; created by the admin who owns the app so row-level security lets it read all bookings). `mr-sync` calls `GET /api/apps/{app_id}/entities/Booking/v2/list` with `Authorization: Bearer`, per Base44 docs read 2026-11-04. Untested against a live token: the response shape is parsed tolerantly and logged on mismatch. The token stops working if its creator leaves the workspace. |
 | Email provider | Owner | Code uses Resend (`RESEND_API_KEY` secret). Needs `sustainable-scholars.org` (or a subdomain) verified with DNS records. Alternative: Microsoft Graph from info@ (needs an Entra app and admin consent) means rewriting `sendMail`. |
 | Schedule cron | Claude | `pg_cron` + `pg_net`: `mr-sync` every 5 minutes, `mr-send` every minute, header `x-cron-secret` from `mr_settings`. |
 | Test mode week | Both | `mode = 'test'`: every reminder goes to the owner only. Then `mode = 'live'`. |

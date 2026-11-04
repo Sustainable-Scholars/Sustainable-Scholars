@@ -38,16 +38,30 @@ Deno.serve(async (req) => {
   }
 
   const now = new Date();
+  // Base44 personal access token (read-only, created by an admin so row-level security lets it read all bookings).
+  const headers = { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" };
   const q = encodeURIComponent(JSON.stringify({ start_time: { $gt: new Date(now.getTime() - 3600000).toISOString() } }));
-  const res = await fetch(`https://app.base44.com/api/apps/${APP_ID}/entities/Booking?q=${q}&limit=500`, {
-    headers: { api_key: API_KEY, "Content-Type": "application/json" },
-  });
-  if (!res.ok) {
-    const detail = { error: `Base44 HTTP ${res.status}`, body: (await res.text()).slice(0, 300) };
-    await db.from("mr_run_log").insert({ job: "sync", detail });
-    return new Response(JSON.stringify(detail), { status: 502 }); // fail loudly: a green run must mean a real check
+  const bookings: any[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 10; page++) {
+    const url = `https://app.base44.com/api/apps/${APP_ID}/entities/Booking/v2/list?q=${q}&limit=200` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      const detail = { error: `Base44 HTTP ${res.status}`, body: (await res.text()).slice(0, 300) };
+      await db.from("mr_run_log").insert({ job: "sync", detail });
+      return new Response(JSON.stringify(detail), { status: 502 }); // fail loudly: a green run must mean a real check
+    }
+    const body = await res.json();
+    const items = Array.isArray(body) ? body : (body.data ?? body.items ?? body.records ?? body.entities ?? null);
+    if (!Array.isArray(items)) {
+      const detail = { error: "Unexpected Base44 response shape", keys: Object.keys(body ?? {}) };
+      await db.from("mr_run_log").insert({ job: "sync", detail });
+      return new Response(JSON.stringify(detail), { status: 502 });
+    }
+    bookings.push(...items);
+    cursor = body.has_more ? body.next_cursor ?? null : null;
+    if (!cursor) break;
   }
-  const bookings: any[] = await res.json();
 
   let created = 0, updated = 0, cancelled = 0;
   for (const b of bookings) {
