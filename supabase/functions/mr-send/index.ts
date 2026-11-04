@@ -5,7 +5,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // mode: dry = log only, test = send only to the owner, live = send to the client.
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
+const MS_TENANT = Deno.env.get("MS_TENANT_ID");
+const MS_CLIENT = Deno.env.get("MS_CLIENT_ID");
+const MS_SECRET = Deno.env.get("MS_CLIENT_SECRET");
+const msConfigured = () => Boolean(MS_TENANT && MS_CLIENT && MS_SECRET);
 const MAX_ATTEMPTS = 3;
 const SITE = "https://sustainable-scholars.org";
 
@@ -29,15 +32,25 @@ function compose(r: any, tz: string) {
   return { subject, text, html };
 }
 
-async function sendMail(s: any, to: string, subject: string, text: string, html: string, key: string) {
-  const res = await fetch("https://api.resend.com/emails", {
+// Sends from the real info@ mailbox through Microsoft Graph (app-only, Mail.Send). Copies land in Sent Items.
+async function sendMail(s: any, to: string, subject: string, _text: string, html: string, key: string) {
+  const tokenRes = await fetch(`https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/token`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json", "Idempotency-Key": key },
-    body: JSON.stringify({ from: `${s.from_name} <${s.from_email}>`, to: [to], reply_to: s.from_email, subject, text, html }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: MS_CLIENT!, client_secret: MS_SECRET!, scope: "https://graph.microsoft.com/.default", grant_type: "client_credentials" }),
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${JSON.stringify(body).slice(0, 200)}`);
-  return String(body.id ?? "");
+  const tok = await tokenRes.json().catch(() => ({}));
+  if (!tokenRes.ok || !tok.access_token) throw new Error(`Microsoft token ${tokenRes.status}: ${String(tok.error_description ?? tok.error ?? "").slice(0, 200)}`);
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(s.from_email)}/sendMail`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tok.access_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: { subject, body: { contentType: "HTML", content: html }, toRecipients: [{ emailAddress: { address: to } }] },
+      saveToSentItems: true,
+    }),
+  });
+  if (res.status !== 202) throw new Error(`Graph sendMail ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return key; // Graph returns no message id; the reminder id is the audit key
 }
 
 Deno.serve(async (req) => {
@@ -57,7 +70,7 @@ Deno.serve(async (req) => {
       const mail = compose(r, s.display_tz);
       let providerId = "dry-run";
       if (s.mode !== "dry") {
-        if (!RESEND_KEY) throw new Error("RESEND_API_KEY is not set");
+        if (!msConfigured()) throw new Error("Microsoft mail secrets (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET) are not set");
         const to = s.mode === "test" ? s.owner_email : r.o_email;
         const subject = s.mode === "test" ? `[TEST for ${r.o_email}] ${mail.subject}` : mail.subject;
         providerId = await sendMail(s, to, subject, mail.text, mail.html, r.o_id);
@@ -69,7 +82,7 @@ Deno.serve(async (req) => {
       const msg = e instanceof Error ? e.message : String(e);
       const giveUp = r.o_attempts >= MAX_ATTEMPTS;
       await db.from("mr_reminders").update({ status: giveUp ? "failed" : "pending", error: msg, updated_at: new Date().toISOString() }).eq("id", r.o_id);
-      if (giveUp && RESEND_KEY && s.mode !== "dry") {
+      if (giveUp && msConfigured() && s.mode !== "dry") {
         try { await sendMail(s, s.owner_email, `Reminder FAILED for ${r.o_email} (${r.o_kind})`, `A ${r.o_kind} reminder could not be sent after ${MAX_ATTEMPTS} tries.\n\n${msg}`, `<p>A ${esc(r.o_kind)} reminder for ${esc(r.o_email)} could not be sent after ${MAX_ATTEMPTS} tries.</p><p>${esc(msg)}</p>`, `alert-${r.o_id}`); } catch { /* the failed row and run log still record it */ }
       }
     }
