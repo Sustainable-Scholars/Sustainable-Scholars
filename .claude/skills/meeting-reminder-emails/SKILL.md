@@ -6,7 +6,7 @@ description: Sustainable Scholars meeting reminder system, built on Supabase (no
 # Meeting reminder emails (Supabase)
 
 Built 2026-11-04 in the Supabase project "Scholarship Database" (`jbqzuzuloxxnzjrbehgr`).
-State at build: tables, functions and rules deployed and tested in **dry-run mode**. Not live.
+State 2026-11-04 evening: tables, functions and cron jobs deployed. Base44 sync verified (read 3 real bookings). A real test email sent through Microsoft Graph. Running in **test mode** (every reminder goes only to the owner). Not live to clients.
 Code lives in this repo: `supabase/migrations/20261104_meeting_reminders_schema.sql`,
 `supabase/functions/mr-sync/index.ts`, `supabase/functions/mr-send/index.ts`.
 
@@ -44,14 +44,14 @@ The site's "Book a Call" button goes to `/book-call`, a custom page in the Base4
 |---|---|---|
 | `BASE44_API_KEY` secret | Owner, in Supabase > Edge Functions > Secrets | Holds a Base44 **personal access token** (workspace name > Settings > Secrets > Personal access tokens; one app, read-only; created by the admin who owns the app so row-level security lets it read all bookings). `mr-sync` calls `GET /api/apps/{app_id}/entities/Booking/v2/list` with `Authorization: Bearer`, per Base44 docs read 2026-11-04. Untested against a live token: the response shape is parsed tolerantly and logged on mismatch. The token stops working if its creator leaves the workspace. |
 | Email via Outlook (Microsoft Graph) | Owner | Entra app registration, application permission `Mail.Send` with admin consent, a client secret. Secrets in Supabase: `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`. `mr-send` sends as `mr_settings.from_email` (info@) through Graph with `saveToSentItems`, so reminders show in the Sent folder. Hardening: `Mail.Send` as an application permission can send as any mailbox in the tenant, so restrict it to info@ with an Exchange Online application access policy or RBAC for Applications. Replaced the earlier Resend plan on 2026-11-04. |
-| Schedule cron | Claude | `pg_cron` + `pg_net`: `mr-sync` every 5 minutes, `mr-send` every minute, header `x-cron-secret` from `mr_settings`. |
+| Schedule cron | Done 2026-11-04 | `pg_cron` jobs `mr-sync` (every 5 minutes) and `mr-send` (every minute) post to the functions with `x-cron-secret` read from `mr_settings`. |
 | Test mode week | Both | `mode = 'test'`: every reminder goes to the owner only. Then `mode = 'live'`. |
 | Time zone | Owner | Bookings carry no time zone, so emails show Eastern (`display_tz`). Confirm this fits clients. |
 
 ## Open items (as of build)
-- The dry-run test rows (`source_id` starting `TEST-`) still need deleting, and `mr_settings` was left at
-  `enabled = true, mode = 'dry'`. Set `enabled = false` until cron is scheduled. The cleanup SQL was
-  blocked by a connector confirmation prompt.
+- Fake test meetings (`source_id` starting `TEST-`) still need deleting; the connector asks for confirmation on DELETE statements.
+- To go live: `update mr_settings set mode = 'live' where id = 1;` after the owner approves the test emails.
+- Restrict the Entra app's `Mail.Send` to info@ only (Exchange Online application access policy).
 - No daily accountability report yet. Planned: an 8 AM email listing meetings with fewer than 3 reminders, failures, and replies waiting.
 - A "cron stopped running" alert is not built.
 
