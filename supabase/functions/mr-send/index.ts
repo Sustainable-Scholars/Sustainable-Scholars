@@ -33,7 +33,7 @@ function compose(r: any, tz: string) {
 }
 
 // Sends from the real info@ mailbox through Microsoft Graph (app-only, Mail.Send). Copies land in Sent Items.
-async function sendMail(s: any, to: string, subject: string, _text: string, html: string, key: string) {
+async function sendMail(s: any, to: string, subject: string, _text: string, html: string, key: string, cc?: string) {
   const tokenRes = await fetch(`https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -45,7 +45,7 @@ async function sendMail(s: any, to: string, subject: string, _text: string, html
     method: "POST",
     headers: { Authorization: `Bearer ${tok.access_token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: { subject, body: { contentType: "HTML", content: html }, toRecipients: [{ emailAddress: { address: to } }] },
+      message: { subject, body: { contentType: "HTML", content: html }, toRecipients: [{ emailAddress: { address: to } }], ...(cc ? { ccRecipients: [{ emailAddress: { address: cc } }] } : {}) },
       saveToSentItems: true,
     }),
   });
@@ -73,7 +73,8 @@ Deno.serve(async (req) => {
         if (!msConfigured()) throw new Error("Microsoft mail secrets (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET) are not set");
         const to = s.mode === "test" ? s.owner_email : r.o_email;
         const subject = s.mode === "test" ? `[TEST for ${r.o_email}] ${mail.subject}` : mail.subject;
-        providerId = await sendMail(s, to, subject, mail.text, mail.html, r.o_id);
+        // live mode: the owner is copied on every client email
+        providerId = await sendMail(s, to, subject, mail.text, mail.html, r.o_id, s.mode === "live" ? s.owner_email : undefined);
       } else out.dry++;
       await db.from("mr_reminders").update({ status: "sent", sent_at: new Date().toISOString(), provider_id: providerId, error: null, updated_at: new Date().toISOString() }).eq("id", r.o_id);
       out.sent++;

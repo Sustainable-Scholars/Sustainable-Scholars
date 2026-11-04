@@ -6,7 +6,7 @@ description: Sustainable Scholars meeting reminder system, built on Supabase (no
 # Meeting reminder emails (Supabase)
 
 Built 2026-11-04 in the Supabase project "Scholarship Database" (`jbqzuzuloxxnzjrbehgr`).
-State 2026-11-04 evening: tables, functions and cron jobs deployed. Base44 sync verified (read 3 real bookings). A real test email sent through Microsoft Graph. Running in **test mode** (every reminder goes only to the owner). Not live to clients.
+State 2026-11-04 evening: **live**. Tables, functions and cron jobs deployed; Base44 sync verified; test email received by the owner. In live mode every client email is sent from info@ and the owner (`mr_settings.owner_email`) is CC'd. Test and dry modes send nothing to clients.
 Code lives in this repo: `supabase/migrations/20261104_meeting_reminders_schema.sql`,
 `supabase/functions/mr-sync/index.ts`, `supabase/functions/mr-send/index.ts`.
 
@@ -50,7 +50,7 @@ The site's "Book a Call" button goes to `/book-call`, a custom page in the Base4
 
 ## Open items (as of build)
 - Fake test meetings (`source_id` starting `TEST-`) still need deleting; the connector asks for confirmation on DELETE statements.
-- To go live: `update mr_settings set mode = 'live' where id = 1;` after the owner approves the test emails.
+- Went live 2026-11-04 after the owner approved the test email. Safe rollback: `update mr_settings set enabled = false where id = 1;`.
 - Restrict the Entra app's `Mail.Send` to info@ only (Exchange Online application access policy).
 - No daily accountability report yet. Planned: an 8 AM email listing meetings with fewer than 3 reminders, failures, and replies waiting.
 - A "cron stopped running" alert is not built.
