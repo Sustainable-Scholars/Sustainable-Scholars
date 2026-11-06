@@ -8,6 +8,32 @@ description: Set up, run, extend and troubleshoot the Sustainable Scholars Insta
 Built and verified live on 2026-10-27 for @sustainable__scholars. Go-live result: 4 runs, 21 DMs sent
 with public replies, 0 failures. Everything below was tested against the real account.
 
+## UPDATE 2026-11-06: moved off Activepieces to Supabase
+Activepieces ran out of free credits (resets Nov 23) and the owner will not pay for it, so the system was rebuilt on
+the Supabase project "Scholarship Database" (`jbqzuzuloxxnzjrbehgr`). The Activepieces flows below remain as history.
+- **Tables:** `ig_campaigns`, `ig_handled` (one row per comment; Sent / Failed / Skipped / Pending), `ig_needs_reply`,
+  `ig_run_log`, `ig_settings` (enabled, mode dry|live, page_token, limits). Service-role only.
+- **Functions:** `ig-run` (every 5 minutes, replaces the master flow) and `ig-digest` (hourly cron, emails once a day at
+  8 AM Eastern, replaces the digest flow). Code: `supabase/functions/ig-run`, `supabase/functions/ig-digest`.
+- **Instagram access:** a non-expiring **Page access token** (`debug_token` shows `expires_at: 0`) with comment and
+  messaging scopes, stored in `ig_settings.page_token`. Private replies POST to `/{page_id}/messages` with
+  `recipient={"comment_id":...}`. (The Instagram user id returns "user cannot be found" / "App is not connected".)
+  Public replies POST to `/{comment_id}/replies`. The token came from the Activepieces connection; generate your own
+  from the Meta app (App ID 1750057199438380) when convenient and replace it.
+- **Rule changes:** one DM per person per **post** (not per campaign), so alias keywords on one post never double-send;
+  each comment is claimed with a `Pending` row before sending (no double sends if two runs overlap); repeat commenters
+  are logged Skipped instead of re-evaluated forever; Graph read errors on every post return HTTP 502 and are logged.
+- **Migrated data:** 20 campaigns and 261 handled comments from the Activepieces CSV exports (221 Sent, 39 Skipped, 1 Failed).
+  Older Needs Reply history was not imported.
+- **Adding a campaign now:** `insert into ig_campaigns (campaign_name, keyword, post_id, post_link, dm_message, link_to_send, status)`.
+- **Go live / pause:** `update ig_settings set enabled = true, mode = 'live'` (dry = report only, nothing sent or written).
+- **Gotcha:** CSV exports start with a hidden byte-order mark; read with `utf-8-sig`. And do not map results by first
+  letter: Sent and Skipped both start with S.
+
+## TikTok (plan, not built)
+TikTok does not offer comment-to-DM for US personal accounts, and keyword auto-replies need a Verified Business Account.
+Realistic version: a keyword landing page per post on sustainable-scholars.org plus a comments digest. See the 2026-11-06 plan.
+
 ## When to use
 - Connecting an Instagram account to Activepieces for the first time.
 - Adding a new post or keyword (one new row, no new flow).
