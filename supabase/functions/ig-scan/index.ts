@@ -59,13 +59,26 @@ async function scholarships(): Promise<any[]> {
   return rows.filter((r) => r.supabase_id && r.institution_name);
 }
 
+// Institution names are matched by their core: "University", "College", "State", "The" and "Of" are dropped,
+// so "North Carolina A & T State University" matches a caption that says "North Carolina A&T".
+const core = (name: string) => norm(String(name).replace(/\b(university|college|state|the|of)\b/gi, ""));
+
 // Auto-picks a scholarship only when exactly one record fits the caption; otherwise the admin chooses.
 function pickLink(caption: string, schs: any[]) {
   const capNorm = norm(caption);
   const capTokens = new Set(tokens(caption));
+  const schoolsByCore = new Map<string, Set<string>>();
+  for (const s of schs) {
+    const c = core(s.institution_name);
+    if (!schoolsByCore.has(c)) schoolsByCore.set(c, new Set());
+    schoolsByCore.get(c)!.add(String(s.institution_name));
+  }
   const inst = schs.filter((s) => {
-    const name = norm(String(s.institution_name).replace(/\b(university|college)\b/gi, ""));
-    return name.length >= 5 && capNorm.includes(name);
+    const full = norm(String(s.institution_name).replace(/\b(university|college)\b/gi, ""));
+    if (full.length >= 5 && capNorm.includes(full)) return true;
+    // Short name (e.g. "North Carolina A&T"): only when no other school shares that core name.
+    const c = core(s.institution_name);
+    return c.length >= 5 && capNorm.includes(c) && schoolsByCore.get(c)!.size === 1;
   });
   if (!inst.length) return { status: "none", pick: null as any, top: [] as any[] };
   const scored = inst
