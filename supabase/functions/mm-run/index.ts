@@ -98,6 +98,7 @@ const C = {
   panel: rgb(0.152, 0.157, 0.173),   // ticket body
   gold: rgb(0.765, 0.635, 0.4),      // antique gold
   goldDim: rgb(0.52, 0.44, 0.29),    // perforation
+  green: rgb(0.22, 0.86, 0.42),      // bright booking button
   white: rgb(0.965, 0.955, 0.935),
   text: rgb(0.86, 0.85, 0.82),
   muted: rgb(0.64, 0.62, 0.58),
@@ -149,9 +150,9 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
   // Header, left aligned
   const LX = 60, RX = 552;
   put("SUSTAINABLE SCHOLARS", sansB, 8, LX, 66, C.gold);
-  put(displayName, serifI, 15, LX, 94, C.muted);
-  put("Top 3 Scholarships", serifB, 32, LX, 132, C.gold);
-  page.drawLine({ start: { x: LX, y: Y(148) }, end: { x: RX, y: Y(148) }, thickness: 0.8, color: C.gold });
+  put(displayName, serifI, 20, LX, 98, C.white);
+  put("Top 3 Scholarships", serifB, 32, LX, 138, C.gold);
+  page.drawLine({ start: { x: LX, y: Y(149) }, end: { x: RX, y: Y(149) }, thickness: 0.8, color: C.gold });
 
   // Ticket stubs. Each box is a panel with notches top and bottom at the perforation.
   const cardX = LX, cardW = RX - LX, cardH = 142, tops = [162, 312, 462];
@@ -224,20 +225,15 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
 
   // Call to action: two side-by-side booking buttons (both link to the booking page)
   const ctaY = 624;
-  put("Your next step: a free 1:1 strategy session", serifB, 17, LX, ctaY + 14, C.white);
+  put("A Complementary 1:1 Scholarship Strategy Session", serifB, 17, LX, ctaY + 14, C.white);
   put("Meet with our team to see if you're a fit for The Success Circle.", serif, 10.5, LX, ctaY + 32, C.text);
 
-  const btnW = 240, btnH = 30, btnTop = ctaY + 44;
-  page.drawRectangle({ x: LX, y: Y(btnTop + btnH), width: btnW, height: btnH, color: C.gold });
+  // One booking button: bright green, linked to the booking page
+  const btnW = 240, btnH = 32, btnTop = ctaY + 44;
+  page.drawRectangle({ x: LX, y: Y(btnTop + btnH), width: btnW, height: btnH, color: C.green });
   const b1 = "BOOK YOUR SESSION";
-  put(b1, sansB, 10, LX + (btnW - sansB.widthOfTextAtSize(b1, 10)) / 2, btnTop + 19, C.ink);
+  put(b1, sansB, 10.5, LX + (btnW - sansB.widthOfTextAtSize(b1, 10.5)) / 2, btnTop + 20, C.ink);
   linkBox(BOOK_URL, LX, btnTop, btnW, btnH);
-
-  const bx2 = RX - btnW;
-  page.drawRectangle({ x: bx2, y: Y(btnTop + btnH), width: btnW, height: btnH, borderColor: C.gold, borderWidth: 1 });
-  const b2 = "BOOK YOUR FREE STRATEGY CALL";
-  put(b2, sansB, 9.5, bx2 + (btnW - sansB.widthOfTextAtSize(b2, 9.5)) / 2, btnTop + 19, C.gold);
-  linkBox(BOOK_URL, bx2, btnTop, btnW, btnH);
 
   // Footer line: printed booking link and the disclaimer
   const urlLabel = "sustainable-scholars.org/book-call";
