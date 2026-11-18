@@ -16,7 +16,6 @@ const MS_CLIENT = Deno.env.get("MS_CLIENT_ID");
 const MS_SECRET = Deno.env.get("MS_CLIENT_SECRET");
 const MAX_ATTEMPTS = 3;
 const SITE = "https://sustainable-scholars.org";
-const BOOK_URL = `${SITE}/book-call`;
 
 const esc = (t: string) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
@@ -60,7 +59,7 @@ function selectTop3(matches: any[]): { picks?: Pick[]; reason?: string } {
   };
 }
 
-// ---------- PDF: dark card layout, gold accents, clickable links ----------
+// ---------- PDF attachment: dark card layout, gold accents, clickable links ----------
 const PAGE_W = 612, PAGE_H = 792;
 const C = {
   bg: rgb(0.137, 0.149, 0.188),      // #232630
@@ -141,6 +140,7 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
   });
 
   // Call to action
+  const BOOK_URL = `${SITE}/book-call`;
   const ctaTop = top + 6, ctaH = 96;
   page.drawSvgPath(rrPath(cardW, ctaH, 14), { x: x0, y: Y(ctaTop), color: C.navy, borderColor: C.gold, borderWidth: 0.6 });
   const head = "Your next step: a free 1:1 strategy session";
@@ -160,33 +160,11 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
   return await pdf.save();
 }
 
-// ---------- Email body (copy from the approved mock-up) ----------
-function composeEmail(first: string, picks: Pick[]) {
-  const subject = "Your top 3 scholarship matches";
-  const items = picks.map((p, i) => `<tr><td style="padding:0 0 14px"><div style="background:#2A2F3D;border:1px solid #C9A84C;border-radius:12px;padding:16px 18px;color:#E8ECF2">
-      <div style="color:#C9A84C;font-size:12px;font-weight:bold">#${i + 1}${p.tag ? `  ·  ${esc(p.tag)}` : ""}</div>
-      <div style="font-size:16px;font-weight:bold;color:#FFFFFF;margin-top:4px">${esc(p.name)}</div>
-      <div style="color:#A9AEBD;font-size:13px;margin-top:4px">${esc([p.institution, p.award_amount].filter(Boolean).join(" · "))}</div>
-      <div style="font-size:14px;margin-top:8px">${esc(p.description ?? "")}</div>
-      <div style="margin-top:10px"><a href="${esc(p.application_url)}" style="color:#C9A84C;font-weight:bold;text-decoration:none">View scholarship &rsaquo;</a></div>
-    </div></td></tr>`).join("");
-  const html = `<div style="background:#232630;padding:28px 16px;font-family:Arial,Helvetica,sans-serif;color:#E8ECF2">
-    <div style="max-width:560px;margin:0 auto">
-      <div style="color:#C9A84C;font-size:11px;font-weight:bold;letter-spacing:1px">SUSTAINABLE SCHOLARS &middot; GOLDEN TICKET</div>
-      <h1 style="font-family:Georgia,'Times New Roman',serif;color:#FFFFFF;font-size:26px;margin:8px 0 14px">${esc(first)}, your top 3 scholarships</h1>
-      <p style="font-size:15px;line-height:1.5">Hi ${esc(first)}, your three best-fit scholarships are below and in the attached PDF.</p>
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0">${items}</table>
-      <div style="background:#1E2F4D;border:1px solid #C9A84C;border-radius:12px;padding:22px;text-align:center;margin-top:8px">
-        <div style="font-family:Georgia,'Times New Roman',serif;color:#FFFFFF;font-size:19px;font-weight:bold">Your next step: a free 1:1 strategy session</div>
-        <div style="color:#E8ECF2;font-size:14px;margin-top:6px">Meet with our team to see if you're a fit for The Success Circle.</div>
-        <div style="margin-top:14px"><a href="${BOOK_URL}" style="background:#C9A84C;color:#232630;font-weight:bold;font-size:13px;text-decoration:none;padding:10px 22px;border-radius:20px;display:inline-block">BOOK YOUR SESSION</a></div>
-        <div style="color:#A9AEBD;font-size:13px;margin-top:14px">Or reply <strong style="color:#C9A84C">CIRCLE</strong> to this email and we will send you the booking link.</div>
-      </div>
-      <p style="color:#A9AEBD;font-size:11px;text-align:center;margin-top:18px">Always verify eligibility and deadlines on the official scholarship page.<br>Sustainable Scholars</p>
-    </div></div>`;
-  const text = `Hi ${first},\n\nYour three best-fit scholarships are in the attached PDF.\n\n` +
-    picks.map((p, i) => `#${i + 1} ${p.name} (${p.institution})\n${p.award_amount}\nView: ${p.application_url}`).join("\n\n") +
-    `\n\nYour next step: a free 1:1 strategy session. Book here: ${BOOK_URL}\nOr reply CIRCLE to this email and we will send you the booking link.\n\nSustainable Scholars`;
+// ---------- Email: body and subject copied from the approved Outlook draft ----------
+function composeEmail(first: string, _picks: Pick[]) {
+  const subject = "Congratulations, You’ve Been Matched!!";
+  const html = `\r\n<div style="font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#000;line-height:1.5"><p>Dear ${esc(first)},</p><p>Thank you for taking the time to complete your introductory Match Making Form. We are excited to share the top 3 scholarships that we believe will be useful on your journey to graduating debt free!</p><p>Your next step: we would love to see if you are a fit for our newest program, <b>The Success Circle</b>. Inside The Success Circle, we work alongside you to maximize the aid you receive, including:</p><ol style="margin:0 0 12px 20px;padding:0"><li>Matching you with colleges that offer strong institutional scholarships</li><li>Support with scholarship essay creation</li><li>Finding additional scholarships that match your profile</li></ol><p>Simply reply to this email with the word <b>CIRCLE</b>, and a member of our team will follow up with you directly to determine your eligibility.</p><p>Best regards,</p><p style="margin:0"><b>Cameron Cary</b><br />Sustainable Scholars Founder</p><p style="margin:16px 0 0;font-style:italic">“Helping You Land Your Debt-Free Degree”</p><p style="margin:12px 0 0"><a href="${SITE}" style="color:#1c2d4a">Click Here for More Information</a></p><p style="margin:12px 0 0"></p></div>`;
+  const text = `Dear ${first},\n\nThank you for taking the time to complete your introductory Match Making Form. We are excited to share the top 3 scholarships that we believe will be useful on your journey to graduating debt free!\n\nYour next step: we would love to see if you are a fit for our newest program, The Success Circle. Inside The Success Circle, we work alongside you to maximize the aid you receive, including:\n1. Matching you with colleges that offer strong institutional scholarships\n2. Support with scholarship essay creation\n3. Finding additional scholarships that match your profile\n\nSimply reply to this email with the word CIRCLE, and a member of our team will follow up with you directly to determine your eligibility.\n\nBest regards,\nCameron Cary\nSustainable Scholars Founder\n“Helping You Land Your Debt-Free Degree”\n${SITE}`;
   return { subject, text, html };
 }
 
@@ -224,14 +202,15 @@ Deno.serve(async (req) => {
   if (!s || req.headers.get("x-cron-secret") !== s.cron_secret) return new Response("forbidden", { status: 403 });
   if (!s.enabled) return new Response(JSON.stringify({ skipped: "matchmaking disabled" }));
 
-  // Test-only preview: renders the design with given picks and sends it to the owner address. Never to a student.
+  // Test-only preview: renders the email and PDF with given picks and sends them to the owner address. Never to a student.
   const body = await req.json().catch(() => ({}));
   if (body.test_design) {
     if (s.mode !== "test") return new Response(JSON.stringify({ error: "test_design needs mode=test" }), { status: 400 });
     const d = body.test_design;
-    const pdf = await buildPdf(`${d.first} ${d.last}`.trim(), d.picks);
+    const name = `${d.first} ${d.last}`.trim();
+    const pdf = await buildPdf(name, d.picks);
     const mail = composeEmail(d.first, d.picks);
-    await sendMail(s.from_email, s.owner_email, `[TEST for ${d.email}] ${mail.subject}`, mail.html, b64(pdf), "Top-3-Scholarships.pdf");
+    await sendMail(s.from_email, s.owner_email, `[TEST for ${d.email}] ${mail.subject}`, mail.html, b64(pdf), `${name.replace(/\s+/g, "_")}_Top_3_Scholarships.pdf`);
     return new Response(JSON.stringify({ sent_test_design_to: s.owner_email }));
   }
 
@@ -256,6 +235,7 @@ Deno.serve(async (req) => {
 
     const email = String(it.email ?? "").trim().toLowerCase();
     const first = String(it.first_name ?? "").trim().split(/\s+/)[0] || "there";
+    const fullName = `${String(it.first_name ?? "").trim()} ${String(it.last_name ?? "").trim()}`.trim() || first;
     const grade = String(it.grade_level ?? "");
     const gpa = typeof it.gpa === "number" ? it.gpa : it.gpa == null || it.gpa === "" ? null : Number(it.gpa);
     const base = { intake_id: it.id, email, first_name: first, grade, gpa };
@@ -281,10 +261,10 @@ Deno.serve(async (req) => {
       if (s.mode === "dry") { preview.push({ email, first, status: "would_send", top3: top3.map((p) => p.name) }); continue; }
       try {
         const mail = composeEmail(first, top3);
-        const pdf = await buildPdf(`${first}`, top3);
+        const pdf = await buildPdf(fullName, top3);
         const to = s.mode === "test" ? s.owner_email : email;
         const subject = s.mode === "test" ? `[TEST for ${email}] ${mail.subject}` : mail.subject;
-        await sendMail(s.from_email, to, subject, mail.html, b64(pdf), "Top-3-Scholarship-Matches.pdf");
+        await sendMail(s.from_email, to, subject, mail.html, b64(pdf), `${fullName.replace(/\s+/g, "_")}_Top_3_Scholarships.pdf`);
         await db.from("mm_matchmaking").upsert({ ...base, status: s.mode === "test" ? "sent_test" : "sent", reason: null, top3, attempts: 0, provider_ref: null, updated_at: new Date().toISOString() });
         counts.sent++;
       } catch (e) {
