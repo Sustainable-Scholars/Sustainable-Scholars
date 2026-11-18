@@ -90,17 +90,18 @@ function selectTop3(matches: any[]): { picks?: Pick[]; reason?: string } {
   };
 }
 
-// ---------- PDF attachment: framed gold-on-charcoal template (the approved design) ----------
+// ---------- PDF attachment: ticket-stub scholarship sheet (charcoal and antique gold) ----------
 // All text comes from the student's Supabase-verified picks. Nothing is typed in by hand.
 const PAGE_W = 612, PAGE_H = 792;
 const C = {
-  bg: rgb(0.118, 0.125, 0.141),      // charcoal
-  panel: rgb(0.149, 0.157, 0.176),   // slightly lighter card fill
-  gold: rgb(0.741, 0.612, 0.384),    // antique gold
-  white: rgb(0.953, 0.945, 0.925),
-  text: rgb(0.835, 0.826, 0.8),
-  muted: rgb(0.62, 0.6, 0.56),
-  ink: rgb(0.118, 0.125, 0.141),
+  bg: rgb(0.106, 0.11, 0.122),       // charcoal page
+  panel: rgb(0.152, 0.157, 0.173),   // ticket body
+  gold: rgb(0.765, 0.635, 0.4),      // antique gold
+  goldDim: rgb(0.52, 0.44, 0.29),    // perforation
+  white: rgb(0.965, 0.955, 0.935),
+  text: rgb(0.86, 0.85, 0.82),
+  muted: rgb(0.64, 0.62, 0.58),
+  ink: rgb(0.106, 0.11, 0.122),
 };
 
 function wrap(text: string, font: any, size: number, maxW: number): string[] {
@@ -126,11 +127,9 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
   const page = pdf.addPage([PAGE_W, PAGE_H]);
   const Y = (top: number) => PAGE_H - top; // "distance from top" -> PDF y
 
-  // Centered text; `base` is the baseline measured from the top of the page.
-  const ctext = (text: string, font: any, size: number, base: number, color: any) => {
-    const x = (PAGE_W - font.widthOfTextAtSize(text, size)) / 2;
+  // Text drawn at a baseline measured from the top of the page, left edge at x.
+  const put = (text: string, font: any, size: number, x: number, base: number, color: any) =>
     page.drawText(text, { x, y: Y(base), size, font, color });
-  };
   // Clickable area: `top` is the top edge of the box, measured from the top of the page.
   const linkBox = (url: string, x: number, top: number, w: number, h: number) => {
     const ref = pdf.context.register(pdf.context.obj({
@@ -142,71 +141,111 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
     page.node.addAnnot(ref);
   };
 
-  // Charcoal background and double gold frame
+  // Page and frame
   page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: C.bg });
-  page.drawRectangle({ x: 24, y: Y(24 + 744), width: 564, height: 744, borderColor: C.gold, borderWidth: 1.2 });
-  page.drawRectangle({ x: 32, y: Y(32 + 728), width: 548, height: 728, borderColor: C.gold, borderWidth: 0.5 });
+  page.drawRectangle({ x: 24, y: Y(768), width: 564, height: 744, borderColor: C.gold, borderWidth: 1.2 });
+  page.drawRectangle({ x: 32, y: Y(760), width: 548, height: 728, borderColor: C.gold, borderWidth: 0.5 });
 
-  // Header: student name, title, ornamental divider
-  ctext(displayName, serifI, 18, 84, C.gold);
-  ctext("Top 3 Scholarships", serifB, 34, 136, C.gold);
-  page.drawLine({ start: { x: 170, y: Y(154) }, end: { x: 442, y: Y(154) }, thickness: 0.8, color: C.gold });
-  page.drawCircle({ x: 306, y: Y(154), size: 3, color: C.gold });
+  // Header, left aligned
+  const LX = 60, RX = 552;
+  put("SUSTAINABLE SCHOLARS", sansB, 8, LX, 66, C.gold);
+  put(displayName, serifI, 15, LX, 94, C.muted);
+  put("Top 3 Scholarships", serifB, 32, LX, 132, C.gold);
+  page.drawLine({ start: { x: LX, y: Y(148) }, end: { x: RX, y: Y(148) }, thickness: 0.8, color: C.gold });
 
-  // Three framed scholarship boxes
-  const cardX = 86, cardW = 440, cardH = 134, tops = [168, 312, 456];
-  picks.slice(0, 3).forEach((p, i) => {
+  // Ticket stubs. Each box is a panel with notches top and bottom at the perforation.
+  const cardX = LX, cardW = RX - LX, cardH = 142, tops = [162, 312, 462];
+  const stubW = 104, px = cardX + stubW;           // perforation x
+  const x0 = px + 22, bodyW = RX - 22 - x0;        // text column
+  const bodyTop = 46, bodyBottom = cardH - 16;     // text must sit between these, relative to the box top
+
+  // Fit text: largest sizes first, so the name, then the description, then the institution line fill the box.
+  const nameSizes = [22, 21, 20, 19, 18, 17, 16, 15, 14, 13];
+  const descSizes = [10.5, 10, 9.5, 9, 8.5, 8];
+  const subSizes = [10, 9.5, 9, 8.5, 8];
+  const planFor = (name: string, sub: string, desc: string, ns: number, ss: number, ds: number) => {
+    const nl = wrap(name, serifB, ns, bodyW);
+    const sl = wrap(sub, sans, ss, bodyW);
+    const dl = wrap(desc, serif, ds, bodyW);
+    const nameBase = bodyTop + 4;
+    const nameEnd = nameBase + (nl.length - 1) * ns * 1.15;
+    const subBase = nameEnd + ns * 0.9 + ss;
+    const subEnd = subBase + (sl.length - 1) * ss * 1.25;
+    const descBase = subEnd + ds * 1.1 + ds;
+    const descEnd = descBase + (dl.length - 1) * ds * 1.32;
+    return { nl, sl, dl, nameBase, subBase, descBase, ns, ss, ds, fits: descEnd <= bodyBottom && nl.length <= 2 && sl.length <= 2 && dl.length <= 3 };
+  };
+
+  // One type size for all three boxes: take the smallest size each box can fill, so the set looks consistent.
+  const best = (p: Pick) => {
+    const sub = `${p.institution}  ·  ${p.award_amount}`;
+    for (const ns of nameSizes) for (const ds of descSizes) for (const ss of subSizes) {
+      const c = planFor(p.name, sub, p.description ?? "", ns, ss, ds);
+      if (c.fits) return { ns, ds, ss };
+    }
+    return { ns: 13, ds: 8, ss: 8 };
+  };
+  const top3 = picks.slice(0, 3);
+  const sizes = top3.map(best);
+  const NS = Math.min(...sizes.map((s) => s.ns)), DS = Math.min(...sizes.map((s) => s.ds)), SS = Math.min(...sizes.map((s) => s.ss));
+
+  top3.forEach((p, i) => {
     const t = tops[i];
+    // Ticket body
     page.drawRectangle({ x: cardX, y: Y(t + cardH), width: cardW, height: cardH, color: C.panel, borderColor: C.gold, borderWidth: 1 });
-    page.drawRectangle({ x: cardX + 5, y: Y(t + cardH - 5), width: cardW - 10, height: cardH - 10, borderColor: C.gold, borderWidth: 0.4 });
+    // Notches at the perforation, filled with the page colour so the ticket looks cut
+    page.drawCircle({ x: px, y: Y(t), size: 9, color: C.bg });
+    page.drawCircle({ x: px, y: Y(t + cardH), size: 9, color: C.bg });
+    // Perforation
+    page.drawLine({ start: { x: px, y: Y(t + 16) }, end: { x: px, y: Y(t + cardH - 16) }, thickness: 0.8, color: C.goldDim, dashArray: [3, 3] });
 
-    ctext(`SCHOLARSHIP #${i + 1}${p.tag ? `  ·  ${p.tag}` : ""}`, sansB, 7.5, t + 22, C.gold);
+    // Stub: rank number
+    const stubLabel = "PICK";
+    put(stubLabel, sansB, 7.5, cardX + (stubW - sansB.widthOfTextAtSize(stubLabel, 7.5)) / 2, t + 56, C.muted);
+    const num = `#${i + 1}`;
+    put(num, serifB, 46, cardX + (stubW - serifB.widthOfTextAtSize(num, 46)) / 2, t + cardH / 2 + 22, C.gold);
 
-    // Name: up to two lines at 13pt, never cut off
-    const nameLines = wrap(p.name, serifB, 13, 390);
-    nameLines.forEach((l, k) => ctext(l, serifB, 13, t + 40 + k * 16, C.white));
-    let base = t + 40 + (nameLines.length - 1) * 16;
+    // Body: find the largest sizes that fill the box without overflow
+    const sub = `${p.institution}  ·  ${p.award_amount}`;
+    const plan = planFor(p.name, sub, p.description ?? "", NS, SS, DS);
 
-    // Institution and award
-    const subLines = wrap(`${p.institution}  ·  ${p.award_amount}`, sans, 8.5, 390);
-    subLines.forEach((l, k) => ctext(l, sans, 8.5, base + 16 + k * 11, C.muted));
-    base = base + 16 + (subLines.length - 1) * 11;
+    put(`SCHOLARSHIP${p.tag ? `  ·  ${p.tag}` : ""}`, sansB, 7.5, x0, t + 26, C.gold);
+    plan.nl.forEach((l, k) => put(l, serifB, plan!.ns, x0, t + plan!.nameBase + k * plan!.ns * 1.15 - 0, C.white));
+    plan.sl.forEach((l, k) => put(l, sans, plan!.ss, x0, t + plan!.subBase + k * plan!.ss * 1.25, C.muted));
+    plan.dl.forEach((l, k) => put(l, serif, plan!.ds, x0, t + plan!.descBase + k * plan!.ds * 1.32, C.text));
 
-    // Description: use 8pt, drop to 7.5pt only if it needs more than three lines
-    let descSize = 8;
-    let descLines = wrap(p.description ?? "", serif, descSize, 390);
-    if (descLines.length > 3) { descSize = 7.5; descLines = wrap(p.description ?? "", serif, descSize, 390); }
-    descLines.forEach((l, k) => ctext(l, serif, descSize, base + 14 + k * 10, C.text));
-
-    // Clickable "View scholarship" link to the site page
-    const label = "VIEW SCHOLARSHIP  >";
-    const lw = sansB.widthOfTextAtSize(label, 7.5);
-    ctext(label, sansB, 7.5, t + 124, C.gold);
-    linkBox(p.site_url, (PAGE_W - lw) / 2, t + 117, lw, 11);
+    // Clickable "View scholarship" to the site page, set in the stub under the rank
+    const label = "VIEW SCHOLARSHIP >";
+    const lsz = 6.8, lw = sansB.widthOfTextAtSize(label, lsz);
+    const lx = cardX + (stubW - lw) / 2;
+    put(label, sansB, lsz, lx, t + cardH - 22, C.gold);
+    linkBox(p.site_url, lx, t + cardH - 22 - 9, lw, 12);
   });
 
-  // Call to action: two clickable booking buttons and the printed link
-  ctext("Your next step: a free 1:1 strategy session", serifB, 15, 614, C.gold);
-  ctext("Meet with our team to see if you're a fit for The Success Circle.", serif, 9.5, 631, C.text);
+  // Call to action: two side-by-side booking buttons (both link to the booking page)
+  const ctaY = 624;
+  put("Your next step: a free 1:1 strategy session", serifB, 17, LX, ctaY + 14, C.white);
+  put("Meet with our team to see if you're a fit for The Success Circle.", serif, 10.5, LX, ctaY + 32, C.text);
 
-  const btnW = 230, btnH = 26, btnX = (PAGE_W - btnW) / 2;
-  // Button 1: filled
-  page.drawRectangle({ x: btnX, y: Y(640 + btnH), width: btnW, height: btnH, color: C.gold });
+  const btnW = 240, btnH = 30, btnTop = ctaY + 44;
+  page.drawRectangle({ x: LX, y: Y(btnTop + btnH), width: btnW, height: btnH, color: C.gold });
   const b1 = "BOOK YOUR SESSION";
-  page.drawText(b1, { x: btnX + (btnW - sansB.widthOfTextAtSize(b1, 9.5)) / 2, y: Y(657), size: 9.5, font: sansB, color: C.ink });
-  linkBox(BOOK_URL, btnX, 640, btnW, btnH);
-  // Button 2: outlined
-  page.drawRectangle({ x: btnX, y: Y(674 + btnH), width: btnW, height: btnH, borderColor: C.gold, borderWidth: 1 });
+  put(b1, sansB, 10, LX + (btnW - sansB.widthOfTextAtSize(b1, 10)) / 2, btnTop + 19, C.ink);
+  linkBox(BOOK_URL, LX, btnTop, btnW, btnH);
+
+  const bx2 = RX - btnW;
+  page.drawRectangle({ x: bx2, y: Y(btnTop + btnH), width: btnW, height: btnH, borderColor: C.gold, borderWidth: 1 });
   const b2 = "BOOK YOUR FREE STRATEGY CALL";
-  page.drawText(b2, { x: btnX + (btnW - sansB.widthOfTextAtSize(b2, 9)) / 2, y: Y(691), size: 9, font: sansB, color: C.gold });
-  linkBox(BOOK_URL, btnX, 674, btnW, btnH);
+  put(b2, sansB, 9.5, bx2 + (btnW - sansB.widthOfTextAtSize(b2, 9.5)) / 2, btnTop + 19, C.gold);
+  linkBox(BOOK_URL, bx2, btnTop, btnW, btnH);
 
+  // Footer line: printed booking link and the disclaimer
   const urlLabel = "sustainable-scholars.org/book-call";
-  const uw = sans.widthOfTextAtSize(urlLabel, 8.5);
-  ctext(urlLabel, sans, 8.5, 716, C.gold);
-  linkBox(BOOK_URL, (PAGE_W - uw) / 2, 707, uw, 12);
-
-  ctext("Always verify eligibility and deadlines on the official scholarship page.", serif, 7.5, 738, C.muted);
+  const uw = sans.widthOfTextAtSize(urlLabel, 9);
+  put(urlLabel, sans, 9, LX, 748, C.gold);
+  linkBox(BOOK_URL, LX, 748 - 9, uw, 12);
+  const foot = "Verify eligibility and deadlines on each official page.";
+  put(foot, serif, 7.5, RX - serif.widthOfTextAtSize(foot, 7.5), 748, C.muted);
 
   return await pdf.save();
 }
