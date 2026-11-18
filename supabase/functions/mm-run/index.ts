@@ -278,7 +278,8 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
   const crest = await crestPng();
   if (crest) {
     const img = await pdf.embedPng(crest);
-    page.drawImage(img, { x: 552 - 66, y: PAGE_H - 40 - 66, width: 66, height: 66 });
+    // Bottom edge sits on the baseline of the "Top 3 Scholarships" heading (138 from the top)
+    page.drawImage(img, { x: 552 - 66, y: PAGE_H - 138, width: 66, height: 66 });
   }
   // Header, left aligned
   const LX = 60, RX = 552;
