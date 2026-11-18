@@ -118,6 +118,134 @@ function wrap(text: string, font: any, size: number, maxW: number): string[] {
   return lines;
 }
 
+// Minimal PNG writer (RGBA, 8-bit). Uses the runtime deflate, so no image encoder is needed.
+const crc32 = (buf) => {
+  let c, crc = 0xffffffff;
+  for (let n = 0; n < buf.length; n++) {
+    c = (crc ^ buf[n]) & 0xff;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crc = (crc >>> 8) ^ c;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+const chunk = (type, data) => {
+  const t = new TextEncoder().encode(type);
+  const body = new Uint8Array(4 + data.length); body.set(t, 0); body.set(data, 4);
+  const out = new Uint8Array(12 + data.length);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, data.length); out.set(body, 4); dv.setUint32(8 + data.length, crc32(body));
+  return out;
+};
+// rgba: Uint8Array of width*height*4 bytes, row-major
+async function pngFromRGBA(width, height, rgba) {
+  const raw = new Uint8Array((width * 4 + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (width * 4 + 1)] = 0; // filter: none
+    raw.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), y * (width * 4 + 1) + 1);
+  }
+  const z = new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate"))).arrayBuffer();
+  const idat = new Uint8Array(await z);
+  const ihdr = new Uint8Array(13); const dv = new DataView(ihdr.buffer);
+  dv.setUint32(0, width); dv.setUint32(4, height); ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  const parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", idat), chunk("IEND", new Uint8Array(0))];
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total); let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+// Crest for the PDF header: the logo from the public-assets bucket, cropped above its wording and set in a white circle.
+// Returns null on any failure so the email still sends without the logo.
+const LOGO_URL = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/public-assets/Generated_chart__sustainable_scholars_final.png.png`;
+async function decodePngRGBA(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let p = 8, w = 0, h = 0, ct = 0, bd = 0, il = 0;
+  const idats = [];
+  while (p < bytes.length) {
+    const len = dv.getUint32(p), type = String.fromCharCode(...bytes.subarray(p + 4, p + 8));
+    const data = bytes.subarray(p + 8, p + 8 + len);
+    if (type === "IHDR") { w = dv.getUint32(p + 8); h = dv.getUint32(p + 12); bd = data[8]; ct = data[9]; il = data[12]; }
+    if (type === "IDAT") idats.push(data);
+    if (type === "IEND") break;
+    p += 12 + len;
+  }
+  if (bd !== 8 || il !== 0 || (ct !== 6 && ct !== 2)) throw new Error(`unsupported png bd=${bd} ct=${ct} il=${il}`);
+  const bpp = ct === 6 ? 4 : 3;
+  const total = idats.reduce((n, d) => n + d.length, 0);
+  const z = new Uint8Array(total); let o = 0;
+  for (const d of idats) { z.set(d, o); o += d.length; }
+  const inflated = new Uint8Array(await new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer());
+  const stride = w * bpp;
+  const out = new Uint8Array(w * h * 4);
+  let prev = new Uint8Array(stride);
+  for (let y = 0; y < h; y++) {
+    const f = inflated[y * (stride + 1)];
+    const line = inflated.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    const cur = new Uint8Array(stride);
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? cur[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0, x = line[i];
+      let v;
+      if (f === 0) v = x;
+      else if (f === 1) v = x + a;
+      else if (f === 2) v = x + b;
+      else if (f === 3) v = x + ((a + b) >> 1);
+      else { const pp = a + b - c, pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c); v = x + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c); }
+      cur[i] = v & 0xff;
+    }
+    for (let x = 0; x < w; x++) {
+      const si = x * bpp, di = (y * w + x) * 4;
+      out[di] = cur[si]; out[di + 1] = cur[si + 1]; out[di + 2] = cur[si + 2];
+      out[di + 3] = bpp === 4 ? cur[si + 3] : 255;
+    }
+    prev = cur;
+  }
+  return { width: w, height: h, rgba: out };
+}
+
+async function crestPng(): Promise<Uint8Array | null> {
+  try {
+    const res = await fetch(LOGO_URL);
+    if (!res.ok) return null;
+    const src = await decodePngRGBA(new Uint8Array(await res.arrayBuffer()));
+    const W = src.width, H = Math.min(650, src.height), S0 = src.rgba;
+    const inkAt = (x: number, y: number) => {
+      const i = (y * W + x) * 4;
+      return S0[i + 3] > 20 && 765 - (S0[i] + S0[i + 1] + S0[i + 2]) > 60;
+    };
+    let minX = 1e9, maxX = -1, minY = 1e9, maxY = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (inkAt(x, y)) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    let R = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (inkAt(x, y)) R = Math.max(R, Math.hypot(x - cx, y - cy));
+    R = Math.ceil(R) + 12;
+    const S = 2 * R;
+    const canvas = new Uint8Array(S * S * 4); // transparent outside the circle
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (Math.hypot(x - R, y - R) <= R) {
+      const i = (y * S + x) * 4; canvas[i] = 255; canvas[i + 1] = 255; canvas[i + 2] = 255; canvas[i + 3] = 255;
+    }
+    const ox = Math.round(R - cx), oy = Math.round(R - cy);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const X = x + ox, Y = y + oy;
+      if (X < 0 || Y < 0 || X >= S || Y >= S || Math.hypot(X - R, Y - R) > R) continue;
+      const si = (y * W + x) * 4;
+      if (S0[si + 3] === 0) continue;
+      const di = (Y * S + X) * 4;
+      canvas[di] = S0[si]; canvas[di + 1] = S0[si + 1]; canvas[di + 2] = S0[si + 2]; canvas[di + 3] = S0[si + 3];
+    }
+    const N = 220, rgba = new Uint8Array(N * N * 4);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const si = (Math.floor(y * S / N) * S + Math.floor(x * S / N)) * 4, di = (y * N + x) * 4;
+      rgba[di] = canvas[si]; rgba[di + 1] = canvas[si + 1]; rgba[di + 2] = canvas[si + 2]; rgba[di + 3] = canvas[si + 3];
+    }
+    return await pngFromRGBA(N, N, rgba);
+  } catch (e) {
+    console.error("crest logo skipped:", e);
+    return null;
+  }
+}
+
 async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const serif = await pdf.embedFont(StandardFonts.TimesRoman);
@@ -147,6 +275,11 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
   page.drawRectangle({ x: 24, y: Y(768), width: 564, height: 744, borderColor: C.gold, borderWidth: 1.2 });
   page.drawRectangle({ x: 32, y: Y(760), width: 548, height: 728, borderColor: C.gold, borderWidth: 0.5 });
 
+  const crest = await crestPng();
+  if (crest) {
+    const img = await pdf.embedPng(crest);
+    page.drawImage(img, { x: 552 - 66, y: PAGE_H - 40 - 66, width: 66, height: 66 });
+  }
   // Header, left aligned
   const LX = 60, RX = 552;
   put("SUSTAINABLE SCHOLARS", sansB, 8, LX, 66, C.gold);
@@ -225,7 +358,7 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
 
   // Call to action: two side-by-side booking buttons (both link to the booking page)
   const ctaY = 624;
-  put("A Complementary 1:1 Scholarship Strategy Session", serifB, 17, LX, ctaY + 14, C.white);
+  put("Next Steps: A Complementary Scholarship Strategy Session", serifB, 17, LX, ctaY + 14, C.white);
   put("Meet with our team to see if you're a fit for The Success Circle.", serif, 10.5, LX, ctaY + 32, C.text);
 
   // One booking button: bright green, linked to the booking page
