@@ -6,7 +6,8 @@ import { PDFDocument, StandardFonts, PDFName, PDFString, rgb } from "npm:pdf-lib
 // Only intakes created after mm_settings.go_live_after are handled.
 // mode: dry = preview only, writes nothing | test = sends to owner_email only | live = sends to the student.
 // Rules: grade 11th or 12th AND gpa > 3.5. No GPA -> review. Top 3 must include >= 1 institutional
-// scholarship and all 3 must be open to date (days_left >= 0). Otherwise -> review.
+// scholarship and all 3 must be open to date (days_left >= 0). Every pick must exist and be active in Supabase.
+// Otherwise -> review.
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 const APP_ID = Deno.env.get("BASE44_APP_ID") ?? "69d8c767f023bd93d843becd";
@@ -16,6 +17,7 @@ const MS_CLIENT = Deno.env.get("MS_CLIENT_ID");
 const MS_SECRET = Deno.env.get("MS_CLIENT_SECRET");
 const MAX_ATTEMPTS = 3;
 const SITE = "https://sustainable-scholars.org";
+const BOOK_URL = `${SITE}/book-call`;
 
 const esc = (t: string) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
@@ -37,25 +39,54 @@ async function b44List(entity: string, q: object, max = 1000): Promise<any[]> {
   return out;
 }
 
-type Pick = { name: string; institution: string; source?: string; award_amount: string; deadline: string; days_left: number; application_url: string; description?: string; tag?: string };
+type Pick = { name: string; institution: string; award_amount: string; deadline: string; days_left: number; description?: string; tag?: string; sb_table: "inst" | "program"; sb_id: string; site_url: string };
 
-// Pick the top 3 from a MatchResult. Only scholarships open to date (days_left >= 0) count.
+// Site page for a pick: institutional scholarships open their own page; national programs open the search page.
+const siteUrl = (table: "inst" | "program", id: string, name: string) =>
+  table === "inst" ? `${SITE}/scholarship?id=${id}` : `${SITE}/all-scholarships?q=${encodeURIComponent(name)}`;
+
+// Keep only matches whose scholarship exists and is active in Supabase (the source of truth for what we send).
+async function listedInSupabase(matches: any[]): Promise<any[]> {
+  const instIds: string[] = [], progIds: string[] = [];
+  for (const m of matches) {
+    const id = String(m.scholarship_id ?? "");
+    if (id.startsWith("inst:")) instIds.push(id.slice(5));
+    else if (id.startsWith("program:")) progIds.push(id.slice(8));
+  }
+  const active = new Set<string>();
+  if (instIds.length) {
+    const { data } = await db.from("institutional_scholarships").select("id,status").in("id", instIds);
+    for (const r of data ?? []) if (r.status === "active") active.add(`inst:${r.id}`);
+  }
+  if (progIds.length) {
+    const { data } = await db.from("scholarship_programs").select("id,status").in("id", progIds);
+    for (const r of data ?? []) if (r.status === "active") active.add(`program:${r.id}`);
+  }
+  return matches.filter((m) => active.has(String(m.scholarship_id ?? "")));
+}
+
+// Pick the top 3 from listed matches. Only scholarships open to date (days_left >= 0) count.
 // Requires at least one institutional scholarship among the three.
 function selectTop3(matches: any[]): { picks?: Pick[]; reason?: string } {
-  const open = matches.filter((m) => typeof m.days_left === "number" && m.days_left >= 0 && m.name && m.application_url);
-  if (open.length < 3) return { reason: `only ${open.length} scholarships open to date (need 3)` };
-  const inst = open.filter((m) => m.source === "institutional");
-  if (inst.length === 0) return { reason: "no open institutional scholarship" };
+  const open = matches.filter((m) => typeof m.days_left === "number" && m.days_left >= 0 && m.name);
+  if (open.length < 3) return { reason: `only ${open.length} listed scholarships open to date (need 3)` };
+  const inst = open.filter((m) => String(m.scholarship_id).startsWith("inst:"));
+  if (inst.length === 0) return { reason: "no open institutional scholarship in Supabase" };
   // Lead with the best institutional match, then fill from the rest in the order the matcher ranked them.
   const first = inst[0];
   const rest = open.filter((m) => m !== first);
   const picks = [first, ...rest].slice(0, 3);
   return {
-    picks: picks.map((m) => ({
-      name: m.name, institution: m.institution ?? "", source: m.source,
-      award_amount: m.award_amount ?? "", deadline: m.deadline ?? "", days_left: m.days_left, application_url: m.application_url,
-      description: m.fit_reason ?? "",
-    })),
+    picks: picks.map((m) => {
+      const id = String(m.scholarship_id);
+      const sb_table = id.startsWith("inst:") ? "inst" as const : "program" as const;
+      const sb_id = id.replace(/^(inst|program):/, "");
+      return {
+        name: m.name, institution: m.institution ?? "", award_amount: m.award_amount ?? "",
+        deadline: m.deadline ?? "", days_left: m.days_left, description: m.fit_reason ?? "",
+        sb_table, sb_id, site_url: siteUrl(sb_table, sb_id, m.name),
+      };
+    }),
   };
 }
 
@@ -131,17 +162,16 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
     for (const l of wrap(sub, sans, 9, cardW - 40).slice(0, 2)) { page.drawText(l, { x: x0 + 20, y: Y(ty + 9), size: 9, font: sans, color: C.muted }); ty += 13; }
     ty += 5;
     for (const l of wrap(p.description ?? "", sans, 9.5, cardW - 40).slice(0, 3)) { page.drawText(l, { x: x0 + 20, y: Y(ty + 9), size: 9.5, font: sans, color: C.text }); ty += 13; }
-    // "View scholarship" link, pinned to the bottom of the card
+    // "View scholarship" link to the site page, pinned to the bottom of the card
     const linkTop = top + cardH - 18;
     const label = "View scholarship  >";
     page.drawText(label, { x: x0 + 20, y: Y(linkTop + 9), size: 10, font: sansB, color: C.gold });
-    link(p.application_url, x0 + 20, linkTop + 9 + 2, sansB.widthOfTextAtSize(label, 10), 14);
+    link(p.site_url, x0 + 20, linkTop + 9 + 2, sansB.widthOfTextAtSize(label, 10), 14);
     top += cardH + 16;
   });
 
-  // Call to action
-  const BOOK_URL = `${SITE}/book-call`;
-  const ctaTop = top + 6, ctaH = 96;
+  // Call to action: booking page, as a button and as a printed link
+  const ctaTop = top + 6, ctaH = 112;
   page.drawSvgPath(rrPath(cardW, ctaH, 14), { x: x0, y: Y(ctaTop), color: C.navy, borderColor: C.gold, borderWidth: 0.6 });
   const head = "Your next step: a free 1:1 strategy session";
   page.drawText(head, { x: x0 + (cardW - serifB.widthOfTextAtSize(head, 17)) / 2, y: Y(ctaTop + 32), size: 17, font: serifB, color: C.white });
@@ -152,6 +182,9 @@ async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array>
   const btnLabel = "BOOK YOUR SESSION";
   page.drawText(btnLabel, { x: btnX + (btnW - sansB.widthOfTextAtSize(btnLabel, 10)) / 2, y: Y(btnTop + 17), size: 10, font: sansB, color: C.ink });
   link(BOOK_URL, btnX, btnTop + btnH - 4, btnW, btnH);
+  const urlLabel = "sustainable-scholars.org/book-call";
+  page.drawText(urlLabel, { x: x0 + (cardW - sansB.widthOfTextAtSize(urlLabel, 9.5)) / 2, y: Y(btnTop + btnH + 16), size: 9.5, font: sansB, color: C.gold });
+  link(BOOK_URL, x0 + (cardW - sansB.widthOfTextAtSize(urlLabel, 9.5)) / 2, btnTop + btnH + 16 + 2, sansB.widthOfTextAtSize(urlLabel, 9.5), 13);
 
   // Footer
   const foot = "Always verify eligibility and deadlines on the official scholarship page.";
@@ -208,8 +241,9 @@ Deno.serve(async (req) => {
     if (s.mode !== "test") return new Response(JSON.stringify({ error: "test_design needs mode=test" }), { status: 400 });
     const d = body.test_design;
     const name = `${d.first} ${d.last}`.trim();
-    const pdf = await buildPdf(name, d.picks);
-    const mail = composeEmail(d.first, d.picks);
+    const picks: Pick[] = d.picks.map((p: any) => ({ ...p, site_url: siteUrl(p.sb_table, p.sb_id, p.name) }));
+    const pdf = await buildPdf(name, picks);
+    const mail = composeEmail(d.first, picks);
     await sendMail(s.from_email, s.owner_email, `[TEST for ${d.email}] ${mail.subject}`, mail.html, b64(pdf), `${name.replace(/\s+/g, "_")}_Top_3_Scholarships.pdf`);
     return new Response(JSON.stringify({ sent_test_design_to: s.owner_email }));
   }
@@ -245,20 +279,21 @@ Deno.serve(async (req) => {
     else if (gpa == null || Number.isNaN(gpa)) { status = "review"; reason = "no GPA on intake"; }
     else if (!(gpa > 3.5)) { status = "ineligible"; reason = `GPA ${gpa} is not above 3.5`; }
     else {
-      const mrs = await b44List("MatchResult", { target_email: email }, 5);
+      // MatchResult stores target_email exactly as submitted (case matters), so query with the original spelling.
+      const mrs = await b44List("MatchResult", { target_email: String(it.email ?? "").trim() }, 5);
       mrs.sort((a, b) => utc(b.created_date ?? "1970") - utc(a.created_date ?? "1970"));
       if (!mrs.length) { status = "waiting_matches"; reason = "no MatchResult yet"; }
       else {
         let matches: any[] = [];
         try { matches = JSON.parse(mrs[0].matches ?? "[]"); } catch { matches = []; }
-        const sel = selectTop3(matches);
+        const sel = selectTop3(await listedInSupabase(matches));
         if (!sel.picks) { status = "review"; reason = sel.reason!; }
         else { status = "eligible"; top3 = sel.picks; }
       }
     }
 
     if (status === "eligible" && top3) {
-      if (s.mode === "dry") { preview.push({ email, first, status: "would_send", top3: top3.map((p) => p.name) }); continue; }
+      if (s.mode === "dry") { preview.push({ email, first, status: "would_send", top3: top3.map((p) => p.name), links: top3.map((p) => p.site_url) }); continue; }
       try {
         const mail = composeEmail(first, top3);
         const pdf = await buildPdf(fullName, top3);
