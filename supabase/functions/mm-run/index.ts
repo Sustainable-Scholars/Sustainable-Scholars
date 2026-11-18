@@ -90,22 +90,18 @@ function selectTop3(matches: any[]): { picks?: Pick[]; reason?: string } {
   };
 }
 
-// ---------- PDF attachment: dark card layout, gold accents, clickable links ----------
+// ---------- PDF attachment: framed gold-on-charcoal template (the approved design) ----------
+// All text comes from the student's Supabase-verified picks. Nothing is typed in by hand.
 const PAGE_W = 612, PAGE_H = 792;
 const C = {
-  bg: rgb(0.137, 0.149, 0.188),      // #232630
-  card: rgb(0.165, 0.184, 0.239),    // #2A2F3D
-  navy: rgb(0.118, 0.184, 0.302),    // #1E2F4D
-  gold: rgb(0.788, 0.659, 0.298),    // #C9A84C
-  white: rgb(1, 1, 1),
-  text: rgb(0.85, 0.87, 0.9),
-  muted: rgb(0.62, 0.65, 0.72),
-  ink: rgb(0.12, 0.14, 0.2),
+  bg: rgb(0.118, 0.125, 0.141),      // charcoal
+  panel: rgb(0.149, 0.157, 0.176),   // slightly lighter card fill
+  gold: rgb(0.741, 0.612, 0.384),    // antique gold
+  white: rgb(0.953, 0.945, 0.925),
+  text: rgb(0.835, 0.826, 0.8),
+  muted: rgb(0.62, 0.6, 0.56),
+  ink: rgb(0.118, 0.125, 0.141),
 };
-
-// Rounded rectangle as an SVG path, origin at its top-left corner (pdf-lib SVG paths grow downward).
-const rrPath = (w: number, h: number, r: number) =>
-  `M${r},0 H${w - r} A${r},${r} 0 0 1 ${w},${r} V${h - r} A${r},${r} 0 0 1 ${w - r},${h} H${r} A${r},${r} 0 0 1 0,${h - r} V${r} A${r},${r} 0 0 1 ${r},0 Z`;
 
 function wrap(text: string, font: any, size: number, maxW: number): string[] {
   const words = String(text ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
@@ -122,73 +118,95 @@ function wrap(text: string, font: any, size: number, maxW: number): string[] {
 
 async function buildPdf(displayName: string, picks: Pick[]): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
+  const serif = await pdf.embedFont(StandardFonts.TimesRoman);
+  const serifB = await pdf.embedFont(StandardFonts.TimesRomanBold);
+  const serifI = await pdf.embedFont(StandardFonts.TimesRomanItalic);
   const sans = await pdf.embedFont(StandardFonts.Helvetica);
   const sansB = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const serifB = await pdf.embedFont(StandardFonts.TimesRomanBold);
   const page = pdf.addPage([PAGE_W, PAGE_H]);
-  const Y = (top: number) => PAGE_H - top; // convert "distance from top" to PDF y
+  const Y = (top: number) => PAGE_H - top; // "distance from top" -> PDF y
 
-  const link = (url: string, x: number, topY: number, w: number, h: number) => {
+  // Centered text; `base` is the baseline measured from the top of the page.
+  const ctext = (text: string, font: any, size: number, base: number, color: any) => {
+    const x = (PAGE_W - font.widthOfTextAtSize(text, size)) / 2;
+    page.drawText(text, { x, y: Y(base), size, font, color });
+  };
+  // Clickable area: `top` is the top edge of the box, measured from the top of the page.
+  const linkBox = (url: string, x: number, top: number, w: number, h: number) => {
     const ref = pdf.context.register(pdf.context.obj({
       Type: PDFName.of("Annot"), Subtype: PDFName.of("Link"),
-      Rect: [x, topY - h, x + w, topY],
+      Rect: [x, Y(top) - h, x + w, Y(top)],
       Border: [0, 0, 0],
       A: { Type: PDFName.of("Action"), S: PDFName.of("URI"), URI: PDFString.of(url) },
     }));
     page.node.addAnnot(ref);
   };
 
-  // Background
+  // Charcoal background and double gold frame
   page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: C.bg });
-  // Thin gold rule along the top edge
-  page.drawRectangle({ x: 0, y: Y(6), width: PAGE_W, height: 4, color: C.gold });
+  page.drawRectangle({ x: 24, y: Y(24 + 744), width: 564, height: 744, borderColor: C.gold, borderWidth: 1.2 });
+  page.drawRectangle({ x: 32, y: Y(32 + 728), width: 548, height: 728, borderColor: C.gold, borderWidth: 0.5 });
 
-  // Header
-  page.drawText("SUSTAINABLE SCHOLARS  ·  GOLDEN TICKET", { x: 54, y: Y(62), size: 9, font: sansB, color: C.gold });
-  page.drawText(`${displayName} Top 3 Scholarships`, { x: 54, y: Y(104), size: 28, font: serifB, color: C.white });
+  // Header: student name, title, ornamental divider
+  ctext(displayName, serifI, 18, 84, C.gold);
+  ctext("Top 3 Scholarships", serifB, 34, 136, C.gold);
+  page.drawLine({ start: { x: 170, y: Y(154) }, end: { x: 442, y: Y(154) }, thickness: 0.8, color: C.gold });
+  page.drawCircle({ x: 306, y: Y(154), size: 3, color: C.gold });
 
-  // Cards
-  const cardH = 140, cardW = 504, x0 = 54;
-  let top = 136;
-  picks.forEach((p, i) => {
-    page.drawSvgPath(rrPath(cardW, cardH, 14), { x: x0, y: Y(top), color: C.card, borderColor: C.gold, borderWidth: 0.8 });
-    let ty = top + 22;
-    const rankLabel = `#${i + 1}${p.tag ? `  ·  ${p.tag}` : ""}`;
-    page.drawText(rankLabel, { x: x0 + 20, y: Y(ty), size: 9.5, font: sansB, color: C.gold });
-    ty += 17;
-    const titleLines = wrap(p.name, sansB, 14, cardW - 40).slice(0, 2);
-    for (const l of titleLines) { page.drawText(l, { x: x0 + 20, y: Y(ty + 11), size: 14, font: sansB, color: C.white }); ty += 18; }
-    const sub = [p.institution, p.award_amount].filter(Boolean).join("  ·  ");
-    for (const l of wrap(sub, sans, 9, cardW - 40).slice(0, 2)) { page.drawText(l, { x: x0 + 20, y: Y(ty + 9), size: 9, font: sans, color: C.muted }); ty += 13; }
-    ty += 5;
-    for (const l of wrap(p.description ?? "", sans, 9.5, cardW - 40).slice(0, 3)) { page.drawText(l, { x: x0 + 20, y: Y(ty + 9), size: 9.5, font: sans, color: C.text }); ty += 13; }
-    // "View scholarship" link to the site page, pinned to the bottom of the card
-    const linkTop = top + cardH - 18;
-    const label = "View scholarship  >";
-    page.drawText(label, { x: x0 + 20, y: Y(linkTop + 9), size: 10, font: sansB, color: C.gold });
-    link(p.site_url, x0 + 20, linkTop + 9 + 2, sansB.widthOfTextAtSize(label, 10), 14);
-    top += cardH + 16;
+  // Three framed scholarship boxes
+  const cardX = 86, cardW = 440, cardH = 134, tops = [168, 312, 456];
+  picks.slice(0, 3).forEach((p, i) => {
+    const t = tops[i];
+    page.drawRectangle({ x: cardX, y: Y(t + cardH), width: cardW, height: cardH, color: C.panel, borderColor: C.gold, borderWidth: 1 });
+    page.drawRectangle({ x: cardX + 5, y: Y(t + cardH - 5), width: cardW - 10, height: cardH - 10, borderColor: C.gold, borderWidth: 0.4 });
+
+    ctext(`SCHOLARSHIP #${i + 1}${p.tag ? `  ·  ${p.tag}` : ""}`, sansB, 7.5, t + 22, C.gold);
+
+    // Name: up to two lines at 13pt, never cut off
+    const nameLines = wrap(p.name, serifB, 13, 390);
+    nameLines.forEach((l, k) => ctext(l, serifB, 13, t + 40 + k * 16, C.white));
+    let base = t + 40 + (nameLines.length - 1) * 16;
+
+    // Institution and award
+    const subLines = wrap(`${p.institution}  ·  ${p.award_amount}`, sans, 8.5, 390);
+    subLines.forEach((l, k) => ctext(l, sans, 8.5, base + 16 + k * 11, C.muted));
+    base = base + 16 + (subLines.length - 1) * 11;
+
+    // Description: use 8pt, drop to 7.5pt only if it needs more than three lines
+    let descSize = 8;
+    let descLines = wrap(p.description ?? "", serif, descSize, 390);
+    if (descLines.length > 3) { descSize = 7.5; descLines = wrap(p.description ?? "", serif, descSize, 390); }
+    descLines.forEach((l, k) => ctext(l, serif, descSize, base + 14 + k * 10, C.text));
+
+    // Clickable "View scholarship" link to the site page
+    const label = "VIEW SCHOLARSHIP  >";
+    const lw = sansB.widthOfTextAtSize(label, 7.5);
+    ctext(label, sansB, 7.5, t + 124, C.gold);
+    linkBox(p.site_url, (PAGE_W - lw) / 2, t + 117, lw, 11);
   });
 
-  // Call to action: booking page, as a button and as a printed link
-  const ctaTop = top + 6, ctaH = 112;
-  page.drawSvgPath(rrPath(cardW, ctaH, 14), { x: x0, y: Y(ctaTop), color: C.navy, borderColor: C.gold, borderWidth: 0.6 });
-  const head = "Your next step: a free 1:1 strategy session";
-  page.drawText(head, { x: x0 + (cardW - serifB.widthOfTextAtSize(head, 17)) / 2, y: Y(ctaTop + 32), size: 17, font: serifB, color: C.white });
-  const sub2 = "Meet with our team to see if you're a fit for The Success Circle.";
-  page.drawText(sub2, { x: x0 + (cardW - sans.widthOfTextAtSize(sub2, 10)) / 2, y: Y(ctaTop + 50), size: 10, font: sans, color: C.text });
-  const btnW = 210, btnH = 26, btnX = x0 + (cardW - btnW) / 2, btnTop = ctaTop + 60;
-  page.drawSvgPath(rrPath(btnW, btnH, 13), { x: btnX, y: Y(btnTop), color: C.gold });
-  const btnLabel = "BOOK YOUR SESSION";
-  page.drawText(btnLabel, { x: btnX + (btnW - sansB.widthOfTextAtSize(btnLabel, 10)) / 2, y: Y(btnTop + 17), size: 10, font: sansB, color: C.ink });
-  link(BOOK_URL, btnX, btnTop + btnH - 4, btnW, btnH);
-  const urlLabel = "sustainable-scholars.org/book-call";
-  page.drawText(urlLabel, { x: x0 + (cardW - sansB.widthOfTextAtSize(urlLabel, 9.5)) / 2, y: Y(btnTop + btnH + 16), size: 9.5, font: sansB, color: C.gold });
-  link(BOOK_URL, x0 + (cardW - sansB.widthOfTextAtSize(urlLabel, 9.5)) / 2, btnTop + btnH + 16 + 2, sansB.widthOfTextAtSize(urlLabel, 9.5), 13);
+  // Call to action: two clickable booking buttons and the printed link
+  ctext("Your next step: a free 1:1 strategy session", serifB, 15, 614, C.gold);
+  ctext("Meet with our team to see if you're a fit for The Success Circle.", serif, 9.5, 631, C.text);
 
-  // Footer
-  const foot = "Always verify eligibility and deadlines on the official scholarship page.";
-  page.drawText(foot, { x: x0 + (cardW - sans.widthOfTextAtSize(foot, 8)) / 2, y: Y(PAGE_H - 60), size: 8, font: sans, color: C.muted });
+  const btnW = 230, btnH = 26, btnX = (PAGE_W - btnW) / 2;
+  // Button 1: filled
+  page.drawRectangle({ x: btnX, y: Y(640 + btnH), width: btnW, height: btnH, color: C.gold });
+  const b1 = "BOOK YOUR SESSION";
+  page.drawText(b1, { x: btnX + (btnW - sansB.widthOfTextAtSize(b1, 9.5)) / 2, y: Y(657), size: 9.5, font: sansB, color: C.ink });
+  linkBox(BOOK_URL, btnX, 640, btnW, btnH);
+  // Button 2: outlined
+  page.drawRectangle({ x: btnX, y: Y(674 + btnH), width: btnW, height: btnH, borderColor: C.gold, borderWidth: 1 });
+  const b2 = "BOOK YOUR FREE STRATEGY CALL";
+  page.drawText(b2, { x: btnX + (btnW - sansB.widthOfTextAtSize(b2, 9)) / 2, y: Y(691), size: 9, font: sansB, color: C.gold });
+  linkBox(BOOK_URL, btnX, 674, btnW, btnH);
+
+  const urlLabel = "sustainable-scholars.org/book-call";
+  const uw = sans.widthOfTextAtSize(urlLabel, 8.5);
+  ctext(urlLabel, sans, 8.5, 716, C.gold);
+  linkBox(BOOK_URL, (PAGE_W - uw) / 2, 707, uw, 12);
+
+  ctext("Always verify eligibility and deadlines on the official scholarship page.", serif, 7.5, 738, C.muted);
 
   return await pdf.save();
 }
