@@ -43,7 +43,7 @@ type Pick = { name: string; institution: string; award_amount: string; deadline:
 
 // Site page for a pick: institutional scholarships open their own page; national programs open the search page.
 const siteUrl = (table: "inst" | "program", id: string, name: string) =>
-  table === "inst" ? `${SITE}/scholarship?id=${id}` : `${SITE}/scholarships/program/${id}`;
+  table === "inst" ? `${SITE}/scholarship?id=${id}` : `${SITE}/all-scholarships?q=${encodeURIComponent(name)}`;
 
 // Keep only matches whose scholarship exists and is active in Supabase (the source of truth for what we send).
 async function listedInSupabase(matches: any[]): Promise<any[]> {
