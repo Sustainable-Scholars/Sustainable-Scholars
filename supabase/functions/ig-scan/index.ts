@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// Runs every 2 hours. Scans recent Instagram posts, creates campaigns for new keyword posts,
+// Runs every 10 minutes. Scans recent Instagram posts, creates campaigns for new keyword posts,
 // runs the reply sender, flags possible misspellings, and emails the admin what needs a person.
 // ?dry=1 reports what it would do without writing, sending or emailing.
 
@@ -125,6 +125,8 @@ Deno.serve(async (req) => {
       const { data: al } = await db.from("ig_link_aliases").select("*");
       const alias = new Map((al ?? []).map((a: any) => [a.keyword, a]));
       const sch = await scholarships();
+      // National programs (Ron Brown, Coolidge, ...) that a caption can name directly.
+      const { data: progRows } = await db.from("scholarship_programs").select("id,program_name").eq("status", "active");
       for (const m of fresh) {
         const caption = String(m.caption ?? "");
         const kw = keywordFromCaption(caption);
@@ -140,12 +142,22 @@ Deno.serve(async (req) => {
             link = `${SITE}/scholarship?id=${pick.pick.supabase_id}`;
             label = `${pick.pick.institution_name}: ${pick.pick.scholarship_title}`;
           } else {
-            report.needsLink.push({
-              key: `link:${m.id}`, post: m.permalink, keyword: kw,
-              why: pick.status === "none" ? "no school in the database matches this caption" : "more than one scholarship fits this caption",
-              options: pick.top.map((x: any) => `${x.institution_name}: ${x.scholarship_title} ${SITE}/scholarship?id=${x.supabase_id}`),
-            });
-            continue;
+            // No alias and no single school: look for a national program named in the caption (longest name wins).
+            const capN = norm(caption);
+            const prog = (progRows ?? [])
+              .filter((p: any) => { const n = norm(p.program_name); return n.length >= 12 && capN.includes(n); })
+              .sort((x: any, y: any) => norm(y.program_name).length - norm(x.program_name).length)[0];
+            if (prog) {
+              link = `${SITE}/scholarships/program/${prog.id}`; label = prog.program_name;
+            } else {
+              // Never leave a keyword post without a campaign: use the directory page and tell the admin to set a better link.
+              link = `${SITE}/all-scholarships`; label = `${kw} (directory link)`;
+              report.needsLink.push({
+                key: `link:${m.id}`, post: m.permalink, keyword: kw,
+                why: (pick.status === "none" ? "no school or national program matches this caption" : "more than one scholarship fits this caption") + ". A campaign was created with the directory link; add an alias for a specific link.",
+                options: pick.top.map((x: any) => `${x.institution_name}: ${x.scholarship_title} ${SITE}/scholarship?id=${x.supabase_id}`),
+              });
+            }
           }
         }
         const name = `Auto: ${label} (${m.id})`.slice(0, 180);
