@@ -51,4 +51,4 @@ Both tracks attach the same top-3 PDF. `mm-run` picks the track per intake:
 - **general**: everyone else (other grades, GPA below the cutoff, or no GPA). "We Received Your Match Making Form" email: "Hello {first name}," a link to the 10,000+ scholarship database, and a green BOOK A CALL button to /book-call.
 First names are capitalised in both emails. `test_design` (with `track: "general"` or `"circle"`) sends a preview to owner_email only, in any mode.
 
-The Success Circle email no longer asks students to reply with the word CIRCLE. It ends with "Ready to take the next step? Book a call with a member of our team..." and the same green BOOK A CALL button (BOOK_BTN) used in the general email.
+The Success Circle email no longer asks students to reply with the word CIRCLE. It ends with "To determine if you meet the eligibility requirements for the program, click the link below to book a call with a member of our team so we can learn more about your passions and aspirations." and the same green BOOK A CALL button (BOOK_BTN) used in the general email.
