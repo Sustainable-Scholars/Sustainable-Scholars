@@ -5,7 +5,7 @@ import { PDFDocument, StandardFonts, PDFName, PDFString, rgb } from "npm:pdf-lib
 // Matchmaking / Success Circle run. Called every 10 minutes by pg_cron (x-cron-secret header).
 // Only intakes created after mm_settings.go_live_after are handled.
 // mode: dry = preview only, writes nothing | test = sends to owner_email only | live = sends to the student.
-// Rules: grade 11th or 12th AND gpa > 3.5. No GPA -> review. Top 3 must include >= 1 institutional
+// Rules: grade 11th or 12th AND gpa >= mm_settings.min_gpa (3.3). No GPA -> review. Top 3 must include >= 1 institutional
 // scholarship and all 3 must be open to date (days_left >= 0). Every pick must exist and be active in Supabase.
 // Otherwise -> review.
 
@@ -438,6 +438,7 @@ Deno.serve(async (req) => {
   if (!B44_KEY) return new Response(JSON.stringify({ error: "BASE44_API_KEY not set" }), { status: 500 });
 
   const goLive = new Date(s.go_live_after).getTime();
+  const minGpa = Number(s.min_gpa ?? 3.3);
   const intakes = (await b44List("IntakeForm", { completed: true })).filter((i) => i.created_date && utc(i.created_date) >= goLive);
 
   const { data: ledgerRows } = await db.from("mm_matchmaking").select("intake_id,status,attempts").in("intake_id", intakes.map((i) => i.id).concat(["none"]));
@@ -464,7 +465,7 @@ Deno.serve(async (req) => {
     let status: string; let reason: string | null = null; let top3: Pick[] | null = null;
     if (!/11th|12th/i.test(grade)) { status = "ineligible"; reason = `grade: ${grade || "blank"}`; }
     else if (gpa == null || Number.isNaN(gpa)) { status = "review"; reason = "no GPA on intake"; }
-    else if (!(gpa > 3.5)) { status = "ineligible"; reason = `GPA ${gpa} is not above 3.5`; }
+    else if (!(gpa >= minGpa)) { status = "ineligible"; reason = `GPA ${gpa} is below ${minGpa}`; }
     else {
       // MatchResult stores target_email exactly as submitted (case matters), so query with the original spelling.
       const mrs = await b44List("MatchResult", { target_email: String(it.email ?? "").trim() }, 5);
