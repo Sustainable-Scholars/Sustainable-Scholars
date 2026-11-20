@@ -44,3 +44,9 @@ Reference render: `reference-render.png` in this folder (Kamren Thomas, sample p
 - The image library used before does not load in the Supabase runtime. The crest uses a small built-in PNG decoder and encoder (`decodePngRGBA`, `pngFromRGBA`). Keep it that way.
 - The crest is fetched at send time. If the logo is missing or fetch fails, the PDF sends without it.
 - Go-live steps and dry-run checks are in `meeting-reminder-emails` for the reminder system; this skill covers the matchmaking PDF and email only.
+
+## Two email tracks (added Nov 20)
+Both tracks attach the same top-3 PDF. `mm-run` picks the track per intake:
+- **circle**: grade 11th/12th and GPA >= `mm_settings.min_gpa` (3.3). Success Circle invitation email.
+- **general**: everyone else (other grades, GPA below the cutoff, or no GPA). "We Received Your Match Making Form" email: "Hello {first name}," a link to the 10,000+ scholarship database, and a green BOOK A CALL button to /book-call.
+First names are capitalised in both emails. `test_design` (with `track: "general"` or `"circle"`) sends a preview to owner_email only, in any mode.

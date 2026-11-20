@@ -5,7 +5,10 @@ import { PDFDocument, StandardFonts, PDFName, PDFString, rgb } from "npm:pdf-lib
 // Matchmaking / Success Circle run. Called every 10 minutes by pg_cron (x-cron-secret header).
 // Only intakes created after mm_settings.go_live_after are handled.
 // mode: dry = preview only, writes nothing | test = sends to owner_email only | live = sends to the student.
-// Rules: grade 11th or 12th AND gpa >= mm_settings.min_gpa (3.3). No GPA -> review. Top 3 must include >= 1 institutional
+// Two tracks, same top-3 PDF:
+//   circle  = grade 11th/12th AND gpa >= mm_settings.min_gpa (3.3)  -> Success Circle invitation email
+//   general = everyone else (other grades, GPA below the cutoff, or no GPA) -> "we received your form" email with a book-a-call button
+// Top 3 must include >= 1 institutional
 // scholarship and all 3 must be open to date (days_left >= 0). Every pick must exist and be active in Supabase.
 // Otherwise -> review.
 
@@ -388,6 +391,16 @@ function composeEmail(first: string, _picks: Pick[]) {
   return { subject, text, html };
 }
 
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+// ---------- Email for the general track (not eligible for the Success Circle invitation) ----------
+function composeGeneral(first: string) {
+  const subject = "We Received Your Match Making Form: Your Top 3 Scholarships Are Inside";
+  const btn = `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:20px 0"><tr><td bgcolor="#1fcf5f" style="background:#1fcf5f;border-radius:6px"><a href="${BOOK_URL}" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#0b1b10;text-decoration:none">BOOK A CALL</a></td></tr></table>`;
+  const html = `\r\n<div style="font-family:Georgia,'Times New Roman',serif;font-size:11pt;color:#000;line-height:1.5"><p>Hello ${esc(first)},</p><p>Thank you for completing your Match Making Form with Sustainable Scholars, we have officially added your answers to your student profile! Attached is the list of the top 3 scholarships we matched you with. Click through each one to see the requirements and deadlines.</p><p>We also keep a database of <b>over 10,000 scholarships</b> that you can search anytime at <a href="${SITE}/all-scholarships" style="color:#1c2d4a">sustainable-scholars.org</a>. I encourage you to spend some time exploring it and saving the ones that stand out to you.</p><p>When you are ready for the next step, book a call with one of our scholarship strategists. We will make sure you are applying to the right scholarships and show you everything that is available for you!</p>${btn}<p>Best regards,</p><table role="presentation" cellspacing="0" cellpadding="0" style="margin:0"><tr><td style="vertical-align:middle;padding-right:14px"><img src="${LOGO_URL}" width="110" alt="Sustainable Scholars" style="display:block;border:0;width:110px;height:auto" /></td><td style="vertical-align:middle;font-family:Georgia,'Times New Roman',serif;font-size:11pt;line-height:1.4"><b>Cameron Cary</b><br />Sustainable Scholars Founder<br /><a href="${SITE}" style="color:#1c2d4a">sustainable-scholars.org</a></td></tr></table><p style="margin:16px 0 0;font-style:italic">“Helping You Land Your Debt-Free Degree”</p></div>`;
+  return { subject, html };
+}
+
 async function sendMail(from: string, to: string, subject: string, html: string, pdfB64: string, filename: string) {
   const tokenRes = await fetch(`https://login.microsoftonline.com/${MS_TENANT}/oauth2/v2.0/token`, {
     method: "POST",
@@ -425,12 +438,12 @@ Deno.serve(async (req) => {
   // Test-only preview: renders the email and PDF with given picks and sends them to the owner address. Never to a student.
   const body = await req.json().catch(() => ({}));
   if (body.test_design) {
-    if (s.mode !== "test") return new Response(JSON.stringify({ error: "test_design needs mode=test" }), { status: 400 });
+    // Always goes to owner_email, never a student, so it is safe in any mode.
     const d = body.test_design;
     const name = `${d.first} ${d.last}`.trim();
     const picks: Pick[] = d.picks.map((p: any) => ({ ...p, site_url: siteUrl(p.sb_table, p.sb_id, p.name) }));
     const pdf = await buildPdf(name, picks);
-    const mail = composeEmail(d.first, picks);
+    const mail = d.track === "general" ? composeGeneral(cap(d.first)) : composeEmail(cap(d.first), picks);
     await sendMail(s.from_email, s.owner_email, `[TEST for ${d.email}] ${mail.subject}`, mail.html, b64(pdf), `${name.replace(/\s+/g, "_")}_Top_3_Scholarships.pdf`);
     return new Response(JSON.stringify({ sent_test_design_to: s.owner_email }));
   }
@@ -460,13 +473,12 @@ Deno.serve(async (req) => {
     const fullName = `${String(it.first_name ?? "").trim()} ${String(it.last_name ?? "").trim()}`.trim() || first;
     const grade = String(it.grade_level ?? "");
     const gpa = typeof it.gpa === "number" ? it.gpa : it.gpa == null || it.gpa === "" ? null : Number(it.gpa);
-    const base = { intake_id: it.id, email, first_name: first, grade, gpa };
+    // Success Circle track: grade 11/12 with a GPA at or above the cutoff. Everyone else (including no GPA) gets the general email.
+    const track = /11th|12th/i.test(grade) && gpa != null && !Number.isNaN(gpa) && gpa >= minGpa ? "circle" : "general";
+    const base = { intake_id: it.id, email, first_name: first, grade, gpa, track };
 
     let status: string; let reason: string | null = null; let top3: Pick[] | null = null;
-    if (!/11th|12th/i.test(grade)) { status = "ineligible"; reason = `grade: ${grade || "blank"}`; }
-    else if (gpa == null || Number.isNaN(gpa)) { status = "review"; reason = "no GPA on intake"; }
-    else if (!(gpa >= minGpa)) { status = "ineligible"; reason = `GPA ${gpa} is below ${minGpa}`; }
-    else {
+    {
       // MatchResult stores target_email exactly as submitted (case matters), so query with the original spelling.
       const mrs = await b44List("MatchResult", { target_email: String(it.email ?? "").trim() }, 5);
       mrs.sort((a, b) => utc(b.created_date ?? "1970") - utc(a.created_date ?? "1970"));
@@ -483,7 +495,7 @@ Deno.serve(async (req) => {
     if (status === "eligible" && top3) {
       if (s.mode === "dry") { preview.push({ email, first, status: "would_send", top3: top3.map((p) => p.name), links: top3.map((p) => p.site_url) }); continue; }
       try {
-        const mail = composeEmail(first, top3);
+        const mail = track === "circle" ? composeEmail(cap(first), top3) : composeGeneral(cap(first));
         const pdf = await buildPdf(fullName, top3);
         const to = s.mode === "test" ? s.owner_email : email;
         const subject = s.mode === "test" ? `[TEST for ${email}] ${mail.subject}` : mail.subject;
