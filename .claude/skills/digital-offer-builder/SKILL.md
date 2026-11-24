@@ -31,6 +31,21 @@ If not already known, ask (in one message): revenue target and deadline, budget,
 12. **Launch plan, day by day**, sized to the person's hours and budget: pre-sell or soft launch to warm contacts first, three prelaunch content pieces (opportunity, transformation, ownership), a 4–7 day open cart with a real close, last-call emails on the final day (where many sales land), then deliver and invite buyers to the next rung. Use real calendar moments (holidays, seasonal deadlines).
 13. **Risks and fixes**: no sales in 48 hours (reach problem: DMs to warm contacts), objections, capacity limits.
 
+## Premium tier (when asked "can we charge $X at the top?")
+1. **Comparables first:** what the next-best option costs (for example, private college counselors average $239/hr and about $6,400 per student; packages $3,763–$7,886, per a 2025 IEC pricing survey). Then the value math (one result × years). The price should be a small fraction of both.
+2. **Justify the jump with access, not content.** A 4–5x step over the group tier needs personal help: 1:1 sessions, done-for-you deliverables, edits or reviews, direct messaging, and a follow-up at the next pain point.
+3. **Cap seats to fit the person's hours** (hours per client × seats ≤ available hours). The cap is the scarcity.
+4. **Guarantee the work and accuracy, not the outcome** (for example, "N applications submitted or we keep working free"), with a clear list of what the client has to do. Add a short refund window after kickoff.
+5. **Proof:** 2–3 real results with numbers, plus a sample deliverable. Without proof, sell it openly as a founding cohort at a lower founding price in exchange for feedback and a testimonial.
+6. **Say who it's for and who it's not for.**
+7. **Sell it with apply + a 20-minute call**, not a checkout button. Offer a payment plan with a premium of about 10%.
+8. **Show three tiers side by side**; the premium tier anchors the page and makes the middle tier the obvious pick.
+9. **Honest forecast:** warm lists typically convert 1–3% to high-ticket buyers when there's a call step (assumption). Show month-one math both with and without payment plans.
+10. **Validate cheaply:** a Van Westendorp price survey (too cheap / bargain / expensive / too expensive), a refundable deposit pre-sell, and close rate on the first 10 calls (more than half say yes = underpriced, raise for the next seats). Use sequential price steps instead of A/B tests on small lists.
+
+## Best-offer principles (plain language)
+Sell the result, not the stuff. Value = big result × belief it will happen ÷ (time × effort). Build the offer from the buyer's obstacles. Charge for attention. Higher prices usually mean more profit. Always offer a next step. Show three choices. Remove risk without overpromising. Make scarcity real. Proof beats persuasion. Say who it's not for. Sell before you build.
+
 ## Rules
 - Label every number as sourced, standard practice, or an assumption.
 - No outcome or income promises; testimonials must be real, typical or labeled, with relationships disclosed; refunds as written; subscriptions need clear terms, consent and easy cancellation (FTC/ROSCA).
