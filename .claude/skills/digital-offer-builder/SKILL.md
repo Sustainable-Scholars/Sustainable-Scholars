@@ -43,6 +43,15 @@ If not already known, ask (in one message): revenue target and deadline, budget,
 9. **Honest forecast:** warm lists typically convert 1–3% to high-ticket buyers when there's a call step (assumption). Show month-one math both with and without payment plans.
 10. **Validate cheaply:** a Van Westendorp price survey (too cheap / bargain / expensive / too expensive), a refundable deposit pre-sell, and close rate on the first 10 calls (more than half say yes = underpriced, raise for the next seats). Use sequential price steps instead of A/B tests on small lists.
 
+## Expanding revenue without much more work (reuse-first)
+1. **Inventory first.** Before inventing anything, list what already exists: live plans and prices, registered users and lists, automations (intake → report), recorded sessions, data sets, waitlists, booking tools. Check the actual site or code, not memory.
+2. **Reuse what's built over making something new.** If a membership already exists, use it as the downsell rather than creating a new one. Flag tiers that overlap (for example, a monthly 1:1 plan vs. a premium program) and decide which to lead with.
+3. **Generate candidates from these patterns:** annual or season prepay of existing plans (with a holiday deadline); bundles of existing pieces (20–25% off the parts total); sibling/family add-on; gift cards (December); counselor/organization licenses of existing lists or plans; a one-time unlock of an existing automated product; recordings of live sessions sold as replays and used as bonuses; seasonal kits from premium deliverables (e.g., appeal letters in spring); referral and affiliate commissions; waitlist products.
+4. **For each candidate give:** price, what it reuses, new hours, expected revenue (with assumed take rates on the real audience size), and $ per new hour. Rank by $ per new hour. Note the season and the sales cycle (B2B is slow but renews).
+5. **Discount for overlap** (the same buyers appear in several offers) and show low and expected cases.
+6. **Exclude** offers that consume the person's limited live hours unless priced for it.
+7. **Build order:** do the top-ranked, under-an-hour items before the launch date; schedule the rest by season.
+
 ## Best-offer principles (plain language)
 Sell the result, not the stuff. Value = big result × belief it will happen ÷ (time × effort). Build the offer from the buyer's obstacles. Charge for attention. Higher prices usually mean more profit. Always offer a next step. Show three choices. Remove risk without overpromising. Make scarcity real. Proof beats persuasion. Say who it's not for. Sell before you build.
 
